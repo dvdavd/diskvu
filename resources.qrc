@@ -1,0 +1,34 @@
+<RCC>
+    <qresource prefix="/">
+        <file>assets/diskscape.svg</file>
+        <file>assets/tabler-icons/menu-2.svg</file>
+        <file>assets/tabler-icons/settings.svg</file>
+        <file>assets/tabler-icons/list-details.svg</file>
+        <file>assets/tabler-icons/pencil.svg</file>
+        <file>assets/tabler-icons/files.svg</file>
+        <file>assets/tabler-icons/home.svg</file>
+        <file>assets/tabler-icons/folder.svg</file>
+        <file>assets/tabler-icons/folder-open.svg</file>
+        <file>assets/tabler-icons/freeze-row-column.svg</file>
+        <file>assets/tabler-icons/folders.svg</file>
+        <file>assets/tabler-icons/chevron-left.svg</file>
+        <file>assets/tabler-icons/chevron-up.svg</file>
+        <file>assets/tabler-icons/adjustments-horizontal.svg</file>
+        <file>assets/tabler-icons/palette.svg</file>
+        <file>assets/tabler-icons/brand-speedtest.svg</file>
+        <file>assets/tabler-icons/folders-off.svg</file>
+        <file>assets/tabler-icons/zoom-in.svg</file>
+        <file>assets/tabler-icons/zoom-out.svg</file>
+        <file>assets/tabler-icons/zoom-reset.svg</file>
+        <file>assets/tabler-icons/refresh.svg</file>
+        <file>assets/tabler-icons/refresh-off.svg</file>
+        <file>assets/tabler-icons/copy.svg</file>
+        <file>assets/tabler-icons/chart-donut.svg</file>
+        <file>assets/tabler-icons/file-info.svg</file>
+        <file>assets/tabler-icons/trash.svg</file>
+        <file>assets/tabler-icons/trash-x.svg</file>
+        <file>assets/tabler-icons/alert-triangle.svg</file>
+        <file>assets/tabler-icons/pin.svg</file>
+        <file>assets/tabler-icons/pin_filled.svg</file>
+    </qresource>
+</RCC>

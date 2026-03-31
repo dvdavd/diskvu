@@ -1,0 +1,4 @@
+// SPDX-FileCopyrightText: 2026 dvdavd
+// SPDX-License-Identifier: MIT
+#pragma once
+#define DISKSCAPE_VERSION "@PROJECT_VERSION@"

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Diskscape
+Comment=Explore disk usage as an interactive treemap
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/diskscape
+Icon=io.github.dvdavd.Diskscape
+Categories=Utility;Filesystem;
+Keywords=disk;storage;space;filesystem;files;treemap;analyzer;usage;
+StartupNotify=true
+Terminal=false
