@@ -249,6 +249,23 @@ QString tooltipDisplayPath(const QString& path)
     return QString(kLeftToRightIsolate) + nativePath + QString(kPopDirectionalIsolate);
 }
 
+QColor opaqueCompositeColor(const QColor& background, const QColor& foreground)
+{
+    const qreal alpha = std::clamp<qreal>(foreground.alphaF(), 0.0, 1.0);
+    if (alpha <= 0.0) {
+        return background;
+    }
+    if (alpha >= 1.0) {
+        return foreground.toRgb();
+    }
+
+    QColor opaqueForeground = foreground.toRgb();
+    opaqueForeground.setAlphaF(1.0);
+    QColor composite = blendColors(background, opaqueForeground, alpha);
+    composite.setAlphaF(1.0);
+    return composite;
+}
+
 qreal stableLabelMetric(qreal value, qreal bucket)
 {
     if (bucket <= 0.0) {
@@ -3689,6 +3706,12 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
         const QColor effectiveHeaderColor = nodeHoverStrength > 0.0
             ? blendColors(colorBg, hoverBase, nodeHoverStrength) : colorBg;
         const DirectoryRenderState directoryState = computeDirectoryRenderState(node, r, effectiveClip, depth);
+        const QColor contentAreaColor = (node == m_current)
+            ? colorPanel
+            : (directoryState.showChrome
+                ? blendColors(colorBg, colorPanel, directoryState.chromeOpacity)
+                : colorBg);
+        const QColor childBackgroundColor = contentAreaColor;
         const auto paintVisibleChildren = [&](const DirectoryRenderState& state) {
             p.save();
             p.setClipRect(state.childPaintRect, Qt::IntersectClip);
@@ -3736,9 +3759,12 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
 
                 const QColor fillColor = childBgHighlightStrength > 0.0
                     ? blendColors(baseFill, hoverBase, childBgHighlightStrength) : baseFill;
+                const QColor effectiveFillColor = (!child->isDirectory && fillColor.alphaF() < 1.0)
+                    ? opaqueCompositeColor(childBackgroundColor, fillColor)
+                    : fillColor;
 
                 // Draw background at the calculated total opacity for this child
-                paintTinyNodeFill(p, childRect, fillColor, m_framePixelScale,
+                paintTinyNodeFill(p, childRect, effectiveFillColor, m_framePixelScale,
                                  tileRevealOpacity * childFillOpacity);
 
                 // If detailed features (chrome, labels, children) should show, recurse.
@@ -3758,7 +3784,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
         if (node == m_current) {
             p.save();
             p.setClipRect(ri, Qt::IntersectClip);
-            p.fillRect(ri, colorBg);
+            p.fillRect(ri, contentAreaColor);
             paintVisibleChildren(directoryState);
             p.restore();
             p.restore(); // for the initial p.save() at start of directory block
@@ -3785,7 +3811,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
                 p.save();
                 p.setClipRect(directoryState.contentFillClipRect, Qt::IntersectClip);
                 p.setOpacity(baseOpacity * tileRevealOpacity);
-                p.fillRect(directoryState.childPaintRect, effectiveHeaderColor);
+                p.fillRect(directoryState.childPaintRect, contentAreaColor);
                 p.restore();
             }
             paintVisibleChildren(directoryState);
@@ -3812,8 +3838,8 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
             if (applyOwnReveal) {
                 p.save();
                 p.setClipRect(directoryState.contentFillClipRect, Qt::IntersectClip);
-                p.setOpacity(baseOpacity * tileRevealOpacity * directoryState.chromeOpacity);
-                p.fillRect(directoryState.childPaintRect, effectiveHeaderColor);
+                p.setOpacity(baseOpacity * tileRevealOpacity);
+                p.fillRect(directoryState.childPaintRect, contentAreaColor);
                 p.restore();
             }
         }
@@ -3919,8 +3945,16 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
         const QColor hoverBase = m_settings.highlightColor;
         const qreal nodeHighlightStrength = nodeHoverStrength * highlightOpacity;
         const qreal bgHighlightStrength = std::max(nodeHighlightStrength, subtreeHighlightStrength);
-        const QColor fillColor = bgHighlightStrength > 0.0
+        QColor fillColor = bgHighlightStrength > 0.0
             ? blendColors(fc, hoverBase, bgHighlightStrength) : fc;
+        if (fillColor.alphaF() < 1.0 && node->parent && node->parent->isDirectory) {
+            const QColor parentBase = QColor::fromRgba(node->parent->color);
+            const QColor parentPanelBase = cachedPanelBase(parentBase, m_framePalette.color(QPalette::Base));
+            const QColor parentFillColor = subtreeHighlightStrength > 0.0
+                ? blendColors(parentPanelBase, hoverBase, subtreeHighlightStrength)
+                : parentPanelBase;
+            fillColor = opaqueCompositeColor(parentFillColor, fillColor);
+        }
 
         if (applyOwnReveal) {
             p.fillRect(ri, fillColor);
