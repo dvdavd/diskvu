@@ -6,6 +6,7 @@
 #include "filesystemwatchcontroller.h"
 #include "iconutils.h"
 #include "mainwindow_utils.h"
+#include "nodepropertiesdialog.h"
 #include "scanner.h"
 #include "settingsdialog.h"
 
@@ -2934,7 +2935,7 @@ void MainWindow::onNodeContextMenuRequested(FileNode* node, QPoint globalPos)
     }
 
     if (chosen == propertiesAction) {
-        showPathProperties(path);
+        showPathProperties(node, m_scanResult.root, m_scanResult.arena);
         return;
     }
 
@@ -2985,79 +2986,11 @@ void MainWindow::revealPathInFileManager(const QString& path, bool isDirectory)
     }
 }
 
-void MainWindow::showPathProperties(const QString& path)
+void MainWindow::showPathProperties(const FileNode* node, const FileNode* scanRoot,
+                                    std::shared_ptr<NodeArena> arena)
 {
-    const QFileInfo info(path);
-    if (!info.exists()) {
-        return;
-    }
-
-#ifdef Q_OS_WIN
-    // Standard Windows property sheet invocation
-    QString nativePath = QDir::toNativeSeparators(path);
-    const wchar_t* pathW = reinterpret_cast<const wchar_t*>(nativePath.utf16());
-    
-    // We need to use ShellExecuteEx with SEE_MASK_INVOKEIDLIST
-    SHELLEXECUTEINFOW sei = {0};
-    sei.cbSize = sizeof(sei);
-    sei.fMask = 0x0000000c; // SEE_MASK_INVOKEIDLIST
-    sei.lpVerb = L"properties";
-    sei.lpFile = pathW;
-    sei.nShow = SW_SHOW;
-    ShellExecuteExW(&sei);
-#elif defined(Q_OS_MACOS)
-    // macOS "Get Info" via AppleScript. Escape backslashes and double-quotes
-    // so paths with special characters don't break the string literal.
-    // The "as alias" coercion is required for the command to work reliably
-    // across macOS versions.
-    QString escapedPath = path;
-    escapedPath.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
-    escapedPath.replace(QLatin1Char('"'),  QStringLiteral("\\\""));
-    const QString script = QStringLiteral(
-        "tell application \"Finder\"\n"
-        "open information window of (POSIX file \"%1\" as alias)\n"
-        "activate\n"
-        "end tell"
-    ).arg(escapedPath);
-    QProcess::startDetached(QStringLiteral("/usr/bin/osascript"), {QStringLiteral("-e"), script});
-#else
-    // Linux: Try standard D-Bus FileManager interface (GNOME/KDE/XFCE)
-    const QString uri = QUrl::fromLocalFile(path).toString();
-#ifdef DISKSCAPE_HAS_QT_DBUS
-    QDBusMessage message = QDBusMessage::createMethodCall(
-        QStringLiteral("org.freedesktop.FileManager1"),
-        QStringLiteral("/org/freedesktop/FileManager1"),
-        QStringLiteral("org.freedesktop.FileManager1"),
-        QStringLiteral("ShowItemProperties"));
-    message << (QStringList() << uri) << QString();
-    
-    QDBusMessage reply = QDBusConnection::sessionBus().call(message);
-    if (reply.type() == QDBusMessage::ErrorMessage) {
-        // Fallback: common file managers often support --properties
-        if (!QProcess::startDetached(QStringLiteral("nautilus"), {QStringLiteral("--properties"), path})) {
-            if (!QProcess::startDetached(QStringLiteral("dolphin"), {QStringLiteral("--properties"), path})) {
-                revealPathInFileManager(path, info.isDir());
-            }
-        }
-    }
-#else
-    QStringList dbusArgs = {
-        QStringLiteral("--dest=org.freedesktop.FileManager1"),
-        QStringLiteral("/org/freedesktop/FileManager1"),
-        QStringLiteral("org.freedesktop.FileManager1.ShowItemProperties"),
-        QStringLiteral("array:string:%1").arg(uri),
-        QStringLiteral("string:")
-    };
-    if (QProcess::execute(QStringLiteral("dbus-send"), dbusArgs) != 0) {
-        // Fallback: common file managers often support --properties
-        if (!QProcess::startDetached(QStringLiteral("nautilus"), {QStringLiteral("--properties"), path})) {
-            if (!QProcess::startDetached(QStringLiteral("dolphin"), {QStringLiteral("--properties"), path})) {
-                revealPathInFileManager(path, info.isDir());
-            }
-        }
-    }
-#endif
-#endif
+    auto* dlg = new NodePropertiesDialog(node, scanRoot, std::move(arena), m_settings, this);
+    dlg->show();
 }
 
 bool MainWindow::confirmDeletion(const QFileInfo& info, bool permanentDelete)

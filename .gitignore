@@ -1,0 +1,7 @@
+build*/
+repo/
+*.kate-swp
+*.tmp
+.vscode/
+*.log
+perf.*

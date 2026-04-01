@@ -9,6 +9,7 @@ finish-args:
   - --socket=wayland
   - --device=dri
   - --filesystem=host
+  - --talk-name=org.freedesktop.FileManager1
 
 modules:
   - name: diskscape

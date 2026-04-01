@@ -121,7 +121,8 @@ private:
     void updateToolbarResponsiveLayout();
     void updateTypeLegendPanel();
     void revealPathInFileManager(const QString& path, bool isDirectory);
-    void showPathProperties(const QString& path);
+    void showPathProperties(const FileNode* node, const FileNode* scanRoot,
+                            std::shared_ptr<NodeArena> arena);
     bool confirmDeletion(const QFileInfo& info, bool permanentDelete);
     bool deletePath(const QFileInfo& info, bool permanentDelete);
     void notifyTrashChanged() const;

@@ -105,7 +105,7 @@
         <location filename="../src/treemapwidget.cpp" line="2715"/>
         <location filename="../src/mainwindow_utils.cpp" line="667"/>
         <location filename="../src/mainwindow_utils.cpp" line="770"/>
-        <location filename="../src/mainwindow.cpp" line="3277"/>
+        <location filename="../src/mainwindow.cpp" line="3207"/>
         <source>Free Space</source>
         <translation>Free Space</translation>
     </message>
@@ -207,7 +207,7 @@ Find what’s using space at a glance.</translation>
         <translation>Browse</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="447"/>
+        <location filename="../src/mainwindow.cpp" line="448"/>
         <source>Home</source>
         <translation>Home</translation>
     </message>
@@ -218,391 +218,391 @@ Find what’s using space at a glance.</translation>
         <translation>Browse…</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="383"/>
-        <location filename="../src/mainwindow.cpp" line="3071"/>
-        <location filename="../src/mainwindow.cpp" line="3080"/>
+        <location filename="../src/mainwindow.cpp" line="384"/>
+        <location filename="../src/mainwindow.cpp" line="3001"/>
+        <location filename="../src/mainwindow.cpp" line="3010"/>
         <source>Delete Permanently</source>
         <translation>Delete Permanently</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="384"/>
-        <location filename="../src/mainwindow.cpp" line="3071"/>
-        <location filename="../src/mainwindow.cpp" line="3081"/>
+        <location filename="../src/mainwindow.cpp" line="385"/>
+        <location filename="../src/mainwindow.cpp" line="3001"/>
+        <location filename="../src/mainwindow.cpp" line="3011"/>
         <source>Move to Wastebin</source>
         <translation>Move to Trash</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="437"/>
-        <location filename="../src/mainwindow.cpp" line="2845"/>
-        <location filename="../src/mainwindow.cpp" line="2872"/>
+        <location filename="../src/mainwindow.cpp" line="438"/>
+        <location filename="../src/mainwindow.cpp" line="2843"/>
+        <location filename="../src/mainwindow.cpp" line="2870"/>
         <source>Open</source>
         <translation>Open</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="474"/>
+        <location filename="../src/mainwindow.cpp" line="475"/>
         <source>Back</source>
         <translation>Back</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="487"/>
+        <location filename="../src/mainwindow.cpp" line="488"/>
         <source>Up</source>
         <translation>Up</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="496"/>
-        <location filename="../src/mainwindow.cpp" line="2859"/>
-        <location filename="../src/mainwindow.cpp" line="3659"/>
+        <location filename="../src/mainwindow.cpp" line="497"/>
+        <location filename="../src/mainwindow.cpp" line="2857"/>
+        <location filename="../src/mainwindow.cpp" line="3589"/>
         <source>Refresh</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="528"/>
-        <location filename="../src/mainwindow.cpp" line="2836"/>
+        <location filename="../src/mainwindow.cpp" line="529"/>
+        <location filename="../src/mainwindow.cpp" line="2834"/>
         <source>Zoom In</source>
         <translation>Zoom In</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="541"/>
+        <location filename="../src/mainwindow.cpp" line="542"/>
         <source>Zoom Out</source>
         <translation>Zoom Out</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="557"/>
+        <location filename="../src/mainwindow.cpp" line="558"/>
         <source>Reset Zoom</source>
         <translation>Reset Zoom</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="574"/>
+        <location filename="../src/mainwindow.cpp" line="575"/>
         <source>Free Space</source>
         <translation>Free Space</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="592"/>
+        <location filename="../src/mainwindow.cpp" line="593"/>
         <source>Tree</source>
         <translation>Tree</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="601"/>
+        <location filename="../src/mainwindow.cpp" line="602"/>
         <source>File Types</source>
         <translation>File Types</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="614"/>
+        <location filename="../src/mainwindow.cpp" line="615"/>
         <source>Settings</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="619"/>
+        <location filename="../src/mainwindow.cpp" line="620"/>
         <source>About Diskscape</source>
         <translation>About Diskscape</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="636"/>
+        <location filename="../src/mainwindow.cpp" line="634"/>
         <source>About Qt</source>
         <translation>About Qt</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="642"/>
+        <location filename="../src/mainwindow.cpp" line="640"/>
         <source>Enter a directory path</source>
         <translation>Enter a directory path</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="687"/>
+        <location filename="../src/mainwindow.cpp" line="685"/>
         <source>Scan Warnings</source>
         <translation>Scan Warnings</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="691"/>
+        <location filename="../src/mainwindow.cpp" line="689"/>
         <source>Show directories skipped because they could not be read</source>
         <translation>Show directories skipped because they could not be read</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="708"/>
+        <location filename="../src/mainwindow.cpp" line="706"/>
         <source>Type a filename pattern and press Enter to search</source>
         <translation>Type a filename pattern and press Enter to search</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="733"/>
+        <location filename="../src/mainwindow.cpp" line="731"/>
         <source>Filter by file/folder size</source>
         <translation>Filter by file/folder size</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="734"/>
+        <location filename="../src/mainwindow.cpp" line="732"/>
         <source>Any size</source>
         <translation>Any size</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="735"/>
+        <location filename="../src/mainwindow.cpp" line="733"/>
         <source>≥ 1 MB</source>
         <translation>≥ 1 MB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="736"/>
+        <location filename="../src/mainwindow.cpp" line="734"/>
         <source>≥ 10 MB</source>
         <translation>≥ 10 MB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="737"/>
+        <location filename="../src/mainwindow.cpp" line="735"/>
         <source>≥ 100 MB</source>
         <translation>≥ 100 MB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="738"/>
+        <location filename="../src/mainwindow.cpp" line="736"/>
         <source>≥ 1 GB</source>
         <translation>≥ 1 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="739"/>
+        <location filename="../src/mainwindow.cpp" line="737"/>
         <source>≥ 5 GB</source>
         <translation>≥ 5 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="740"/>
+        <location filename="../src/mainwindow.cpp" line="738"/>
         <source>≥ 10 GB</source>
         <translation>≥ 10 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="741"/>
+        <location filename="../src/mainwindow.cpp" line="739"/>
         <source>≥ 20 GB</source>
         <translation>≥ 20 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="742"/>
+        <location filename="../src/mainwindow.cpp" line="740"/>
         <source>≥ 50 GB</source>
         <translation>≥ 50 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="743"/>
+        <location filename="../src/mainwindow.cpp" line="741"/>
         <source>≥ 100 GB</source>
         <translation>≥ 100 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="744"/>
+        <location filename="../src/mainwindow.cpp" line="742"/>
         <source>≥ 500 GB</source>
         <translation>≥ 500 GB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="745"/>
+        <location filename="../src/mainwindow.cpp" line="743"/>
         <source>≥ 1 TB</source>
         <translation>≥ 1 TB</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="773"/>
+        <location filename="../src/mainwindow.cpp" line="771"/>
         <source>Warnings</source>
         <translation>Warnings</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="863"/>
+        <location filename="../src/mainwindow.cpp" line="861"/>
         <source>Directory</source>
         <translation>Directory</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="864"/>
+        <location filename="../src/mainwindow.cpp" line="862"/>
         <source>Relative</source>
         <translation>Relative</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="865"/>
-        <location filename="../src/mainwindow.cpp" line="925"/>
+        <location filename="../src/mainwindow.cpp" line="863"/>
+        <location filename="../src/mainwindow.cpp" line="923"/>
         <source>Size</source>
         <translation>Size</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="924"/>
+        <location filename="../src/mainwindow.cpp" line="922"/>
         <source>Type</source>
         <translation>Type</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="926"/>
+        <location filename="../src/mainwindow.cpp" line="924"/>
         <source>Count</source>
         <translation>Count</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1159"/>
+        <location filename="../src/mainwindow.cpp" line="1157"/>
         <source>Open a directory to begin</source>
         <translation>Open a directory to begin</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1160"/>
+        <location filename="../src/mainwindow.cpp" line="1158"/>
         <source>Searching...</source>
         <translation>Searching...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1479"/>
+        <location filename="../src/mainwindow.cpp" line="1477"/>
         <source>Open Directory</source>
         <translation>Open Directory</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1499"/>
+        <location filename="../src/mainwindow.cpp" line="1497"/>
         <source>No scan to refresh</source>
         <translation>No scan to refresh</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1515"/>
+        <location filename="../src/mainwindow.cpp" line="1513"/>
         <source>Landing page refreshed</source>
         <translation>Landing page refreshed</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1534"/>
-        <location filename="../src/mainwindow.cpp" line="1540"/>
-        <location filename="../src/mainwindow.cpp" line="2457"/>
+        <location filename="../src/mainwindow.cpp" line="1532"/>
+        <location filename="../src/mainwindow.cpp" line="1538"/>
+        <location filename="../src/mainwindow.cpp" line="2455"/>
         <source>Cancelling refresh...</source>
         <translation>Canceling refresh...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1588"/>
+        <location filename="../src/mainwindow.cpp" line="1586"/>
         <source>Cancelling current scan and switching to %1...</source>
         <translation>Canceling current scan and switching to %1...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1652"/>
-        <location filename="../src/mainwindow.cpp" line="2229"/>
+        <location filename="../src/mainwindow.cpp" line="1650"/>
+        <location filename="../src/mainwindow.cpp" line="2227"/>
         <source>Scanning...</source>
         <translation>Scanning...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1662"/>
-        <location filename="../src/mainwindow.cpp" line="2704"/>
+        <location filename="../src/mainwindow.cpp" line="1660"/>
+        <location filename="../src/mainwindow.cpp" line="2702"/>
         <source>Refreshing %1...</source>
         <translation>Refreshing %1...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1926"/>
-        <location filename="../src/mainwindow.cpp" line="1972"/>
+        <location filename="../src/mainwindow.cpp" line="1924"/>
+        <location filename="../src/mainwindow.cpp" line="1970"/>
         <source>Files</source>
         <translation>Files</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1937"/>
-        <location filename="../src/mainwindow.cpp" line="1983"/>
+        <location filename="../src/mainwindow.cpp" line="1935"/>
+        <location filename="../src/mainwindow.cpp" line="1981"/>
         <source>Total size of files directly inside this folder</source>
         <translation>Total size of files directly inside this folder</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="1938"/>
-        <location filename="../src/mainwindow.cpp" line="1962"/>
-        <location filename="../src/mainwindow.cpp" line="1984"/>
+        <location filename="../src/mainwindow.cpp" line="1936"/>
+        <location filename="../src/mainwindow.cpp" line="1960"/>
+        <location filename="../src/mainwindow.cpp" line="1982"/>
         <source>%1 of parent folder</source>
         <translation>%1 of parent folder</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2102"/>
+        <location filename="../src/mainwindow.cpp" line="2100"/>
         <source>100.0% of scan root</source>
         <translation>100.0% of scan root</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2180"/>
+        <location filename="../src/mainwindow.cpp" line="2178"/>
         <source>%1: %2</source>
         <translation>%1: %2</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2231"/>
+        <location filename="../src/mainwindow.cpp" line="2229"/>
         <source>Seen: %1</source>
         <translation>Seen: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2235"/>
+        <location filename="../src/mainwindow.cpp" line="2233"/>
         <source>Scanning: %1</source>
         <translation>Scanning: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2421"/>
+        <location filename="../src/mainwindow.cpp" line="2419"/>
         <source>Files: %1</source>
         <translation>Files: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2425"/>
+        <location filename="../src/mainwindow.cpp" line="2423"/>
         <source>Total: %1</source>
         <translation>Total: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2429"/>
+        <location filename="../src/mainwindow.cpp" line="2427"/>
         <source>Free: %1</source>
         <translation>Free: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2433"/>
+        <location filename="../src/mainwindow.cpp" line="2431"/>
         <source>Refreshed</source>
         <translation>Refreshed</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2319"/>
+        <location filename="../src/mainwindow.cpp" line="2317"/>
         <source>Starting next scan...</source>
         <translation>Starting next scan...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="440"/>
-        <location filename="../src/mainwindow.cpp" line="466"/>
+        <location filename="../src/mainwindow.cpp" line="441"/>
+        <location filename="../src/mainwindow.cpp" line="467"/>
         <source>Choose a new folder to scan</source>
         <translation>Choose a new folder to scan</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="452"/>
+        <location filename="../src/mainwindow.cpp" line="453"/>
         <source>Return to the home screen</source>
         <translation>Return to the home screen</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="481"/>
+        <location filename="../src/mainwindow.cpp" line="482"/>
         <source>Go back to the previous location</source>
         <translation>Go back to the previous location</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="490"/>
+        <location filename="../src/mainwindow.cpp" line="491"/>
         <source>Move up to the parent folder</source>
         <translation>Move up to the parent folder</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="503"/>
+        <location filename="../src/mainwindow.cpp" line="504"/>
         <source>Refresh the current scan</source>
         <translation>Refresh the current scan</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="513"/>
+        <location filename="../src/mainwindow.cpp" line="514"/>
         <source>Single Filesystem</source>
         <translation>Single Filesystem</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="519"/>
+        <location filename="../src/mainwindow.cpp" line="520"/>
         <source>Stay on the current filesystem while scanning (refresh required)</source>
         <translation>Stay on the current filesystem while scanning (refresh required)</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="535"/>
+        <location filename="../src/mainwindow.cpp" line="536"/>
         <source>Zoom in on the treemap</source>
         <translation>Zoom in on the treemap</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="551"/>
+        <location filename="../src/mainwindow.cpp" line="552"/>
         <source>Zoom out from the treemap</source>
         <translation>Zoom out from the treemap</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="559"/>
+        <location filename="../src/mainwindow.cpp" line="560"/>
         <source>Reset the treemap zoom level</source>
         <translation>Reset the treemap zoom level</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="580"/>
+        <location filename="../src/mainwindow.cpp" line="581"/>
         <source>Show or hide free space in the overview</source>
         <translation>Show or hide free space in the overview</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="596"/>
+        <location filename="../src/mainwindow.cpp" line="597"/>
         <source>Show or hide the directory tree</source>
         <translation>Show or hide the directory tree</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="605"/>
+        <location filename="../src/mainwindow.cpp" line="606"/>
         <source>Show or hide the file types panel</source>
         <translation>Show or hide the file types panel</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="616"/>
+        <location filename="../src/mainwindow.cpp" line="617"/>
         <source>Open application settings</source>
         <translation>Open application settings</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="624"/>
+        <location filename="../src/mainwindow.cpp" line="625"/>
         <source>Diskscape %1
 
 Visualises disk usage as an interactive treemap.
@@ -623,127 +623,212 @@ Bundled icons derived from Tabler Icons are Copyright © 2020-2026 Paweł Kuna a
 Diskscape is licensed under the MIT License.</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="789"/>
+        <location filename="../src/mainwindow.cpp" line="787"/>
         <source>Open the application menu (F10)</source>
         <translation>Open the application menu (F10)</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2319"/>
+        <location filename="../src/mainwindow.cpp" line="2317"/>
         <source>Scan cancelled</source>
         <translation>Scan cancelled</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2370"/>
+        <location filename="../src/mainwindow.cpp" line="2368"/>
         <source>Refresh failed</source>
         <translation>Refresh failed</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2370"/>
+        <location filename="../src/mainwindow.cpp" line="2368"/>
         <source>Scan failed</source>
         <translation>Scan failed</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2457"/>
+        <location filename="../src/mainwindow.cpp" line="2455"/>
         <source>Cancelling scan...</source>
         <translation>Canceling scan...</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2467"/>
+        <location filename="../src/mainwindow.cpp" line="2465"/>
         <source>Ready</source>
         <translation>Ready</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2851"/>
-        <location filename="../src/mainwindow.cpp" line="2883"/>
+        <location filename="../src/mainwindow.cpp" line="2849"/>
+        <location filename="../src/mainwindow.cpp" line="2881"/>
         <source>Copy Path</source>
         <translation>Copy Path</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2866"/>
-        <location filename="../src/mainwindow.cpp" line="2890"/>
+        <location filename="../src/mainwindow.cpp" line="2864"/>
+        <location filename="../src/mainwindow.cpp" line="2888"/>
         <source>Properties</source>
         <translation>Properties</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2877"/>
+        <location filename="../src/mainwindow.cpp" line="2875"/>
         <source>Show in File Manager</source>
         <translation>Show in File Manager</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2900"/>
+        <location filename="../src/mainwindow.cpp" line="2898"/>
         <source>You do not have permission to delete this item</source>
         <translation>You do not have permission to delete this item</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2902"/>
+        <location filename="../src/mainwindow.cpp" line="2900"/>
         <source>Cannot delete while a scan is in progress</source>
         <translation>Cannot delete while a scan is in progress</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2935"/>
+        <location filename="../src/mainwindow.cpp" line="2933"/>
         <source>Copied path: %1</source>
         <translation>Copied path: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2954"/>
+        <location filename="../src/mainwindow.cpp" line="2952"/>
         <source>Failed to delete: %1</source>
         <translation>Failed to delete: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2955"/>
+        <location filename="../src/mainwindow.cpp" line="2953"/>
         <source>Failed to move to wastebin: %1</source>
         <translation>Failed to move to trash: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="2987"/>
+        <location filename="../src/mainwindow.cpp" line="2985"/>
         <source>Failed to open: %1</source>
         <translation>Failed to open: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3073"/>
+        <location filename="../src/mainwindow.cpp" line="3003"/>
         <source>Delete %1 permanently?</source>
         <translation>Delete %1 permanently?</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3074"/>
+        <location filename="../src/mainwindow.cpp" line="3004"/>
         <source>Move %1 to the wastebin?</source>
         <translation>Move %1 to the trash?</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3076"/>
+        <location filename="../src/mainwindow.cpp" line="3006"/>
         <source>This will permanently remove it from disk.</source>
         <translation>This will permanently remove it from disk.</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3077"/>
+        <location filename="../src/mainwindow.cpp" line="3007"/>
         <source>You can restore it later from the system wastebin if supported.</source>
         <translation>You can restore it later from the system trash if supported.</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3228"/>
-        <location filename="../src/mainwindow.cpp" line="3425"/>
+        <location filename="../src/mainwindow.cpp" line="3158"/>
+        <location filename="../src/mainwindow.cpp" line="3355"/>
         <source>Free Space: %1</source>
         <translation>Free Space: %1</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3427"/>
+        <location filename="../src/mainwindow.cpp" line="3357"/>
         <source>%1  (%2)</source>
         <translation>%1  (%2)</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3672"/>
+        <location filename="../src/mainwindow.cpp" line="3602"/>
         <source>Cancel</source>
         <translation>Cancel</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3684"/>
+        <location filename="../src/mainwindow.cpp" line="3614"/>
         <source>Refreshing</source>
         <translation>Refreshing</translation>
     </message>
     <message>
-        <location filename="../src/mainwindow.cpp" line="3816"/>
+        <location filename="../src/mainwindow.cpp" line="3746"/>
         <source>Refreshed: %1</source>
         <translation>Refreshed: %1</translation>
+    </message>
+</context>
+<context>
+    <name>NodePropertiesDialog</name>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="156"/>
+        <source>Properties — %1</source>
+        <translation>Properties — %1</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="245"/>
+        <source>Copy full path</source>
+        <translation>Copy full path</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="253"/>
+        <source>Path</source>
+        <translation>Path</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="258"/>
+        <source>%1 bytes</source>
+        <translation>%1 bytes</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="259"/>
+        <source>Size</source>
+        <translation>Size</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="266"/>
+        <source>Of parent</source>
+        <translation>Of parent</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="271"/>
+        <source>Of root</source>
+        <translation>Of root</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="278"/>
+        <source>Items</source>
+        <translation>Items</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="279"/>
+        <source>%1 files, %2 folders</source>
+        <translation>%1 files, %2 folders</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="286"/>
+        <location filename="../src/nodepropertiesdialog.cpp" line="288"/>
+        <location filename="../src/nodepropertiesdialog.cpp" line="292"/>
+        <source>Type</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="286"/>
+        <source>Free space</source>
+        <translation>Free space</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="288"/>
+        <source>Folder</source>
+        <translation>Folder</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="292"/>
+        <source>File</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="297"/>
+        <source>Modified</source>
+        <translation>Modified</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="302"/>
+        <source>Permissions</source>
+        <translation>Permissions</translation>
+    </message>
+    <message>
+        <location filename="../src/nodepropertiesdialog.cpp" line="310"/>
+        <source>Owner</source>
+        <translation>Owner</translation>
     </message>
 </context>
 <context>
