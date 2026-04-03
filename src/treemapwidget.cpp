@@ -1348,6 +1348,7 @@ void TreemapWidget::clearHoverState(bool notify)
         m_hoveredRect.united(m_previousHoveredRect).toAlignedRect(), viewport()->rect());
     m_hovered = nullptr;
     m_previousHovered = nullptr;
+    m_tooltipTarget = nullptr;
     m_hoveredRect = QRectF();
     m_previousHoveredRect = QRectF();
     m_hoveredTooltip.clear();
@@ -1834,27 +1835,33 @@ void TreemapWidget::updateHoverAt(const QPointF& pos, const QPoint& globalPos, b
         hitRect = QRectF();
     }
 
-    const bool hoverChanged = (hit != m_hovered);
-    const bool hoverRectChanged = (!hoverChanged && hitRect != m_hoveredRect);
+    FileNode* hoverHit = hit;
+    QRectF hoverRect = hitRect;
+    if (suppressHoverForTinyTranslucentLeaf(hoverHit, hoverRect)) {
+        hoverHit = nullptr;
+        hoverRect = QRectF();
+    }
+
+    const bool hoverChanged = (hoverHit != m_hovered);
+    const bool hoverRectChanged = (!hoverChanged && hoverRect != m_hoveredRect);
     if (hoverChanged || hoverRectChanged) {
-        QRect dirty = expandedDirtyRect(m_hoveredRect.toAlignedRect(), viewport()->rect());
-        if (!hitRect.isEmpty()) {
-            dirty = dirty.united(expandedDirtyRect(hitRect.toAlignedRect(), viewport()->rect()));
-        }
+        QRect dirty = hoverDirtyRectForNode(m_hovered, m_hoveredRect);
+        dirty = dirty.united(hoverDirtyRectForNode(hoverHit, hoverRect));
         m_previousHovered = nullptr;
         m_previousHoveredRect = QRectF();
-        m_hovered = hit;
-        m_hoveredRect = hitRect;
+        m_hovered = hoverHit;
+        m_hoveredRect = hoverRect;
         if (hoverChanged) {
             m_hoveredTooltip.clear();
-            m_hoverBlend = hit ? 1.0 : 0.0;
+            m_hoverBlend = hoverHit ? 1.0 : 0.0;
             m_hoverAnimation.stop();
         }
         viewport()->update(dirty);
     }
 
+    const bool tooltipChanged = (hit != m_tooltipTarget);
     if (hit) {
-        if (m_hoveredTooltip.isEmpty()) {
+        if (m_hoveredTooltip.isEmpty() || tooltipChanged) {
             const QString nodePath = hit->isVirtual ? QString() : hit->computePath();
             const QFileInfo info(nodePath);
             const QString displayPath = (nodePath.isEmpty() ? hit->name : nodePath);
@@ -1913,7 +1920,7 @@ void TreemapWidget::updateHoverAt(const QPointF& pos, const QPoint& globalPos, b
                 m_hoveredTooltip += QStringLiteral("</div>");
             }
         }
-        if (hoverChanged || hoverRectChanged || !m_ownsTooltip
+        if (hoverChanged || hoverRectChanged || tooltipChanged || !m_ownsTooltip
                 || m_hoverTooltipTextLabel->text() != m_hoveredTooltip) {
             const qint64 parentSize = (hit->parent && hit->parent->size > 0) ? hit->parent->size : hit->size;
             const double parentPercent = (parentSize > 0)
@@ -1926,7 +1933,9 @@ void TreemapWidget::updateHoverAt(const QPointF& pos, const QPoint& globalPos, b
         } else {
             positionOwnedTooltip(globalPos);
         }
+        m_tooltipTarget = hit;
     } else {
+        m_tooltipTarget = nullptr;
         m_hoveredTooltip.clear();
         hideOwnedTooltip();
     }
@@ -3337,6 +3346,23 @@ qreal TreemapWidget::folderDetailOpacityForNode(const FileNode* node, const QRec
     return std::min(detailFadeW, detailFadeH);
 }
 
+bool TreemapWidget::suppressHoverForTinyTranslucentLeaf(const FileNode* node, const QRectF& rect) const
+{
+    return node
+        && !node->isDirectory
+        && QColor::fromRgba(node->color).alphaF() < 1.0
+        && tileRevealOpacityForNode(node, rect) <= 0.0;
+}
+
+QRect TreemapWidget::hoverDirtyRectForNode(const FileNode* node, const QRectF& rect) const
+{
+    if (rect.isEmpty()) {
+        return QRect();
+    }
+    const int padding = (node && !node->isDirectory) ? 0 : 4;
+    return expandedDirtyRect(rect.toAlignedRect(), viewport()->rect(), padding);
+}
+
 QPointF TreemapWidget::maxCameraOriginForScale(qreal scale) const
 {
     const qreal clampedScale = std::clamp(scale, kCameraMinScale, m_settings.cameraMaxScale);
@@ -3819,9 +3845,11 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
                 // blends calculated at the top of paintNode to ensure children correctly
                 // inherit the highlight from a hovered parent.
                 const qreal childSubtreeHighlightStrength = std::min(childSubtreeHoverBlend + childSubtreePrevHoverBlend, 1.0) * highlightOpacity;
+                const bool suppressTinyLeafHover =
+                    suppressHoverForTinyTranslucentLeaf(child, childRect);
                 const qreal childNodeHoverStrength = std::max(
-                    (child == m_hovered)         ? m_hoverBlend         : 0.0,
-                    (child == m_previousHovered) ? (1.0 - m_hoverBlend) : 0.0);
+                    (child == m_hovered && !suppressTinyLeafHover)         ? m_hoverBlend         : 0.0,
+                    (child == m_previousHovered && !suppressTinyLeafHover) ? (1.0 - m_hoverBlend) : 0.0);
                 const qreal childBgHighlightStrength = std::max(
                     childNodeHoverStrength * highlightOpacity, childSubtreeHighlightStrength);
 
