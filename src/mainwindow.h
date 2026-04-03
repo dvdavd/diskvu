@@ -130,7 +130,7 @@ private:
     void launchIncrementalRefresh(const QString& refreshPath);
     void applyTreemapSettings(const TreemapSettings& settings, bool persist);
     void recolorCurrentTree();
-    void syncColorThemeWithSystem(bool persist);
+    void syncColorThemeWithSystem(bool darkMode, bool persist);
     void updateDirectoryTreePanel();
     void populateDirectoryTreeChildren(QTreeWidgetItem* item);
     void prepareDirectoryTreeItem(QTreeWidgetItem* item);

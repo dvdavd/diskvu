@@ -1256,18 +1256,18 @@ void MainWindow::changeEvent(QEvent* event)
 #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
     case QEvent::DevicePixelRatioChange:
 #endif
-    case QEvent::ScreenChangeInternal:
+    case QEvent::ScreenChangeInternal: {
+        const bool darkMode = systemUsesDarkColorScheme();
         if (qApp) {
-            syncApplicationPaletteToColorScheme(*qApp, systemUsesDarkColorScheme());
+            syncApplicationPaletteToColorScheme(*qApp, darkMode);
             applyMenuFontPolicy(*qApp);
         }
-        syncColorThemeWithSystem(true);
+        syncColorThemeWithSystem(darkMode, true);
         updatePathBarChrome();
         updateLandingPageChrome();
         clearIconCaches();
         updateToolbarIcons();
         QTimer::singleShot(0, this, [this]() {
-            syncColorThemeWithSystem(true);
             if (!m_toolbar) {
                 return;
             }
@@ -1287,13 +1287,6 @@ void MainWindow::changeEvent(QEvent* event)
             m_toolbar->updateGeometry();
             updateToolbarResponsiveLayout();
         });
-        if (m_treemapWidget) {
-            QTimer::singleShot(0, this, [this]() {
-                if (m_treemapWidget) {
-                    m_treemapWidget->applySettings(m_settings);
-                }
-            });
-        }
         if (m_directoryTree) {
             for (int i = 0; i < m_directoryTree->topLevelItemCount(); ++i) {
                 refreshDirectoryTreeIcons(m_directoryTree->topLevelItem(i));
@@ -1302,6 +1295,7 @@ void MainWindow::changeEvent(QEvent* event)
         }
         updateTypeLegendPanel();
         break;
+    }
     default:
         break;
     }
@@ -2670,14 +2664,14 @@ void MainWindow::applyTreemapSettings(const TreemapSettings& settings, bool pers
     recolorCurrentTree();
 }
 
-void MainWindow::syncColorThemeWithSystem(bool persist)
+void MainWindow::syncColorThemeWithSystem(bool darkMode, bool persist)
 {
     if (!m_settings.followSystemColorTheme) {
         return;
     }
 
     TreemapSettings syncedSettings = m_settings;
-    const QString targetThemeId = syncedSettings.colorThemeIdForSystemScheme(widgetChromeUsesDarkColorScheme());
+    const QString targetThemeId = syncedSettings.colorThemeIdForSystemScheme(darkMode);
     if (targetThemeId == syncedSettings.activeColorThemeId) {
         return;
     }
