@@ -37,6 +37,37 @@ namespace {
 constexpr auto kPaletteInitializedProperty = "diskscapePaletteInitialized";
 constexpr auto kPaletteOverrideProperty = "diskscapePaletteOverride";
 
+#ifdef Q_OS_WIN
+constexpr auto kWindowsLightPaletteKey = "ui/windowsLightPalette";
+constexpr auto kWindowsDarkPaletteKey = "ui/windowsDarkPalette";
+
+bool isUsablePalette(const QPalette& palette)
+{
+    return palette.color(QPalette::Window).isValid()
+        && palette.color(QPalette::WindowText).isValid()
+        && palette.color(QPalette::Base).isValid();
+}
+
+QPalette cachedWindowsPalette(bool darkMode)
+{
+    const QSettings store(QStringLiteral("diskscape"), QStringLiteral("diskscape"));
+    return store.value(QString::fromLatin1(darkMode ? kWindowsDarkPaletteKey
+                                                    : kWindowsLightPaletteKey)).value<QPalette>();
+}
+
+void cacheWindowsPalette(bool darkMode, const QPalette& palette)
+{
+    if (!isUsablePalette(palette)) {
+        return;
+    }
+
+    QSettings store(QStringLiteral("diskscape"), QStringLiteral("diskscape"));
+    store.setValue(QString::fromLatin1(darkMode ? kWindowsDarkPaletteKey
+                                                : kWindowsLightPaletteKey),
+                   palette);
+}
+#endif
+
 // Returns the DPRs of all connected screens plus 1.0 as a baseline.
 // Used for per-color icons (swatches, tinted folders) where count × colors matters.
 QList<qreal> screenDevicePixelRatios()
@@ -196,13 +227,78 @@ bool syncApplicationPaletteToColorScheme(QApplication& app, bool darkMode)
     const bool styleDark = paletteLooksDark(stylePalette);
 
     if (initialized) {
-        if (overrideActive || styleDark != currentDark) {
+#ifdef Q_OS_WIN
+        const QPalette cachedTargetPalette = cachedWindowsPalette(darkMode);
+        const bool cachedTargetValid = isUsablePalette(cachedTargetPalette)
+            && paletteLooksDark(cachedTargetPalette) == darkMode;
+
+        if (overrideActive) {
+            if (currentDark == darkMode) {
+                return false;
+            }
+            if (cachedTargetValid) {
+                app.setPalette(cachedTargetPalette);
+                setPaletteSyncState(app, true, false);
+                return true;
+            }
+            // Keep the temporary override until Qt's style palette catches up
+            // with the actual Windows theme. Reapplying a stale standardPalette()
+            // here causes the app to bounce between light and dark palettes.
+            if (styleDark != darkMode) {
+                return false;
+            }
+            app.setPalette(stylePalette);
+            setPaletteSyncState(app, true, false);
+            return styleDark != currentDark || overrideActive;
+        }
+
+        if (currentDark == darkMode) {
+            cacheWindowsPalette(darkMode, app.palette());
+            return false;
+        }
+
+        if (cachedTargetValid) {
+            app.setPalette(cachedTargetPalette);
+            setPaletteSyncState(app, true, false);
+            return true;
+        }
+
+        // After a light-mode startup, Windows can report the new dark color
+        // scheme before QStyle::standardPalette() catches up. If both the live
+        // and style palettes are still light while the OS has switched to dark,
+        // promote the bundled dark fallback immediately instead of locking the
+        // app into the stale light palette.
+        if (darkMode && !currentDark && !styleDark) {
+            app.setPalette(fallbackDarkApplicationPalette());
+            setPaletteSyncState(app, true, true);
+            return true;
+        }
+#endif
+        if (styleDark != currentDark) {
             app.setPalette(stylePalette);
             setPaletteSyncState(app, true, false);
             return true;
         }
         return false;
     }
+
+#ifdef Q_OS_WIN
+    // On Windows, trust the live application palette whenever it already
+    // matches the OS theme. It is usually more accurate than standardPalette()
+    // and gives us the exact palette to reuse on later live switches.
+    if (currentDark == darkMode) {
+        cacheWindowsPalette(darkMode, app.palette());
+        setPaletteSyncState(app, true, false);
+        return false;
+    }
+
+    const QPalette cachedTargetPalette = cachedWindowsPalette(darkMode);
+    if (isUsablePalette(cachedTargetPalette) && paletteLooksDark(cachedTargetPalette) == darkMode) {
+        app.setPalette(cachedTargetPalette);
+        setPaletteSyncState(app, true, false);
+        return true;
+    }
+#endif
 
     // Startup path: if the live style palette already matches the desired
     // light/dark mode, trust it. Only fall back to the bundled dark palette

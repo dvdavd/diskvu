@@ -1163,8 +1163,7 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     }
     refreshPreview();
 
-    auto* previewFrame = new QFrame(this);
-    previewFrame->setFrameShape(QFrame::StyledPanel);
+    auto* previewFrame = new QWidget(this);
     previewFrame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     previewFrame->setMinimumWidth(190);
     auto* previewLayout = new QVBoxLayout(previewFrame);
