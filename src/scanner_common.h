@@ -54,7 +54,7 @@ QStringList defaultExcludedPathsForScanRoot(const QString& scanRootPath)
 
 QString childPathForParent(const QString& parentPath, const QString& childName)
 {
-    if (parentPath == QLatin1String("/")) {
+    if (parentPath.endsWith(QLatin1Char('/'))) {
         return parentPath + childName;
     }
     return parentPath + QLatin1Char('/') + childName;
@@ -62,7 +62,7 @@ QString childPathForParent(const QString& parentPath, const QString& childName)
 
 QString childPathPrefixForParent(const QString& parentPath)
 {
-    if (parentPath == QLatin1String("/")) {
+    if (parentPath.endsWith(QLatin1Char('/'))) {
         return parentPath;
     }
     QString prefix = parentPath;
@@ -74,13 +74,19 @@ bool shouldSkipPath(const QString& candidatePath,
                     const std::vector<QString>& excludedPathPrefixes)
 {
     for (const QString& excludedPath : excludedPathPrefixes) {
+        if (candidatePath.size() < excludedPath.size()) {
+            continue;
+        }
         if (candidatePath == excludedPath) {
             return true;
         }
-        if (candidatePath.startsWith(excludedPath)
-            && candidatePath.size() > excludedPath.size()
-            && excludedPath != QLatin1String("/")
-            && candidatePath.at(excludedPath.size()) == QLatin1Char('/')) {
+        if (!candidatePath.startsWith(excludedPath)) {
+            continue;
+        }
+        if (excludedPath.endsWith(QLatin1Char('/'))) {
+            return true;
+        }
+        if (candidatePath.at(excludedPath.size()) == QLatin1Char('/')) {
             return true;
         }
     }
@@ -146,27 +152,36 @@ bool pathIsWithinNode(const FileNode* node, const QString& currentPath)
         return false;
     }
 
-    if (currentPath == nodePath) {
-        return true;
+    if (currentPath.size() <= nodePath.size()) {
+        return currentPath == nodePath;
     }
 
     if (!currentPath.startsWith(nodePath)) {
         return false;
     }
 
-    const int prefixSize = nodePath.size();
-    return currentPath.size() > prefixSize
-        && currentPath.at(prefixSize) == QLatin1Char('/');
+    if (nodePath.endsWith(QLatin1Char('/'))) {
+        return true;
+    }
+
+    return currentPath.at(nodePath.size()) == QLatin1Char('/');
 }
 
 bool pathIsWithinCandidate(const QString& currentPath, const QString& candidatePath)
 {
-    if (currentPath == candidatePath) {
+    if (currentPath.size() <= candidatePath.size()) {
+        return currentPath == candidatePath;
+    }
+
+    if (!currentPath.startsWith(candidatePath)) {
+        return false;
+    }
+
+    if (candidatePath.endsWith(QLatin1Char('/'))) {
         return true;
     }
-    return currentPath.startsWith(candidatePath)
-        && currentPath.size() > candidatePath.size()
-        && currentPath.at(candidatePath.size()) == QLatin1Char('/');
+
+    return currentPath.at(candidatePath.size()) == QLatin1Char('/');
 }
 
 void addSizeUpwards(FileNode* node, qint64 delta)

@@ -565,24 +565,19 @@ ScanResult Scanner::scan(const QString& path, const TreemapSettings& settings,
                                    storageInfo.bytesFree(), storageInfo.bytesTotal(),
                                    isLocalDevice(storageInfo)});
 
-    // Normalise the scan root for the startsWith check below.
-    // Removing a trailing slash allows "C:/" to match "C:/mount" correctly.
-    const QString scanRootForCheck = canonicalScanRoot.endsWith(QLatin1Char('/'))
-        ? canonicalScanRoot.chopped(1) : canonicalScanRoot;
-
     for (const QStorageInfo& vol : QStorageInfo::mountedVolumes()) {
         if (!vol.isValid() || !vol.isReady())
             continue;
         const QString volRoot = QFileInfo(vol.rootPath()).canonicalFilePath();
         if (volRoot == primaryFsRoot)
             continue;
-        const bool withinScan = volRoot.startsWith(scanRootForCheck + QLatin1Char('/'));
+        const bool withinScan = pathIsWithinCandidate(volRoot, canonicalScanRoot);
         if (!withinScan)
             continue;
         const QString cleanVolRoot = QDir::cleanPath(vol.rootPath());
         bool excluded = false;
         for (const QString& excl : allExcludedPaths) {
-            if (cleanVolRoot == excl || cleanVolRoot.startsWith(excl + QLatin1Char('/'))) {
+            if (pathIsWithinCandidate(cleanVolRoot, excl)) {
                 excluded = true;
                 break;
             }

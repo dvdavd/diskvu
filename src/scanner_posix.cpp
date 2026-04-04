@@ -571,8 +571,7 @@ ScanResult Scanner::scan(const QString& path, const TreemapSettings& settings,
         const QString volRoot = QFileInfo(vol.rootPath()).canonicalFilePath();
         if (volRoot == primaryFsRoot)
             continue;
-        const bool withinScan = (canonicalScanRoot == QLatin1String("/"))
-            || volRoot.startsWith(canonicalScanRoot + QLatin1Char('/'));
+        const bool withinScan = pathIsWithinCandidate(volRoot, canonicalScanRoot);
         if (!withinScan)
             continue;
         // When limited to a single filesystem, don't report other filesystems
@@ -581,7 +580,7 @@ ScanResult Scanner::scan(const QString& path, const TreemapSettings& settings,
         const QString cleanVolRoot = QDir::cleanPath(vol.rootPath());
         bool excluded = false;
         for (const QString& excl : allExcludedPaths) {
-            if (cleanVolRoot == excl || cleanVolRoot.startsWith(excl + QLatin1Char('/'))) {
+            if (pathIsWithinCandidate(cleanVolRoot, excl)) {
                 excluded = true;
                 break;
             }
