@@ -791,6 +791,11 @@ void injectFreeSpaceNodeIfNeeded(ScanResult& scanResult, const QString& currentP
     if (!atFsRoot)
         return;
 
+    struct FreeNodeAndFs {
+        FileNode* node;
+        QString displayRoot;
+    };
+    std::vector<FreeNodeAndFs> freeNodes;
     for (const FsInfo& fs : scanResult.filesystems) {
         if (fs.freeBytes <= 0)
             continue;
@@ -810,8 +815,27 @@ void injectFreeSpaceNodeIfNeeded(ScanResult& scanResult, const QString& currentP
         freeNode->color = settings.freeSpaceColor.rgba();
         // absolutePath stores the canonical mount root so navigation can redistribute this node
         freeNode->absolutePath = fs.canonicalMountRoot;
-        freeNode->parent = scanResult.root;
-        scanResult.root->children.push_back(freeNode);
+        freeNodes.push_back({freeNode, fs.displayMountRoot});
+    }
+
+    if (freeNodes.size() == 1) {
+        freeNodes[0].node->parent = scanResult.root;
+        scanResult.root->children.push_back(freeNodes[0].node);
+    } else if (freeNodes.size() > 1) {
+        FileNode* consolidated = scanResult.arena->alloc();
+        consolidated->name = QCoreApplication::translate("ColorUtils", "Free Space");
+        consolidated->isVirtual = true;
+        consolidated->isDirectory = true;
+        consolidated->color = settings.freeSpaceColor.rgba();
+        consolidated->parent = scanResult.root;
+        consolidated->size = 0;
+        for (const auto& item : freeNodes) {
+            item.node->parent = consolidated;
+            item.node->name = item.displayRoot;
+            consolidated->children.push_back(item.node);
+            consolidated->size += item.node->size;
+        }
+        scanResult.root->children.push_back(consolidated);
     }
 }
 
@@ -1186,8 +1210,14 @@ void applyFreeSpaceNodeColor(FileNode* root, const TreemapSettings& settings)
     if (!root)
         return;
     for (FileNode* child : root->children) {
-        if (child && child->isVirtual)
+        if (child && child->isVirtual) {
             child->color = settings.freeSpaceColor.rgba();
+            for (FileNode* subChild : child->children) {
+                if (subChild && subChild->isVirtual) {
+                    subChild->color = settings.freeSpaceColor.rgba();
+                }
+            }
+        }
     }
 }
 

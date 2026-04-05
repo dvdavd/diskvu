@@ -3378,8 +3378,9 @@ void MainWindow::setFreeSpaceVisible(bool visible)
     }
 
     if (visible) {
-        for (FileNode* freeNode : m_freeSpaceNodes)
+        for (FileNode* freeNode : m_freeSpaceNodes) {
             children.push_back(freeNode);
+        }
         std::sort(children.begin(), children.end(),
                   [](const FileNode* a, const FileNode* b) {
                       return a->size > b->size;

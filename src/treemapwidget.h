@@ -113,6 +113,7 @@ public:
     QString highlightedFileType() const { return m_highlightedFileType; }
     void setWheelZoomEnabled(bool enabled) { m_wheelZoomEnabled = enabled; }
     FileNode* currentNode() const { return m_current; }
+    qint64 effectiveNodeSize(const FileNode* node) const;
     const TreemapSettings& settings() const { return m_settings; }
     qreal cameraScale() const { return m_cameraScale; }
     ViewState currentViewState() const;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(diskscape VERSION 0.9.20 LANGUAGES CXX)
+project(diskscape VERSION 0.9.21 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

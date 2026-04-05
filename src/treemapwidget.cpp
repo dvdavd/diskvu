@@ -906,6 +906,16 @@ void TreemapWidget::setScanPath(const QString& path)
     }
 }
 
+qint64 TreemapWidget::effectiveNodeSize(const FileNode* node) const
+{
+    if (!node) return 0;
+    qint64 sum = 0;
+    for (const FileNode* c : node->children) {
+        if (c && c->size > 0) sum += c->size;
+    }
+    return std::max(node->size, sum);
+}
+
 void TreemapWidget::setSearchPattern(const QString& pattern)
 {
     const QString normalized = pattern.trimmed();
@@ -1886,11 +1896,12 @@ void TreemapWidget::updateHoverAt(const QPointF& pos, const QPoint& globalPos, b
                 const bool rtl = layoutDirection() == Qt::RightToLeft;
                 const QString dirAttr = rtl ? QStringLiteral("rtl") : QStringLiteral("ltr");
                 const QString alignAttr = rtl ? QStringLiteral("right") : QStringLiteral("left");
+                const bool isConsolidatedChild = hit->isVirtual && hit->parent && hit->parent->isVirtual && hit->parent->isDirectory;
                 const QString displayName = hit->isVirtual
-                    ? hit->name
+                    ? (isConsolidatedChild ? tr("Free Space") : hit->name)
                     : (!info.fileName().isEmpty() ? info.fileName() : nodePath);
                 const QString richPath = hit->isVirtual
-                    ? QString()
+                    ? (isConsolidatedChild ? hit->name : QString())
                     : tooltipDisplayPath(info.absolutePath());
                 constexpr int kMaxTooltipPathChars = 64;
                 const QString cappedRichPath = middleElideChars(richPath, kMaxTooltipPathChars);
@@ -1917,12 +1928,17 @@ void TreemapWidget::updateHoverAt(const QPointF& pos, const QPoint& globalPos, b
         }
         if (hoverChanged || hoverRectChanged || tooltipChanged || !m_ownsTooltip
                 || m_hoverTooltipTextLabel->text() != m_hoveredTooltip) {
-            const qint64 parentSize = (hit->parent && hit->parent->size > 0) ? hit->parent->size : hit->size;
-            const double parentPercent = (parentSize > 0)
-                ? (100.0 * static_cast<double>(hit->size) / static_cast<double>(parentSize))
+            const qint64 parentBaseline = hit->parent ? effectiveNodeSize(hit->parent) : hit->size;
+            const double parentPercent = (parentBaseline > 0)
+                ? (100.0 * static_cast<double>(hit->size) / static_cast<double>(parentBaseline))
                 : 0.0;
-            const double rootPercent = (m_root && m_root->size > 0)
-                ? (100.0 * static_cast<double>(hit->size) / static_cast<double>(m_root->size))
+
+            const qint64 totalDataSize = m_root ? m_root->size : 0;
+            const qint64 totalCapacity = effectiveNodeSize(m_root);
+            const qint64 rootBaseline = hit->isVirtual ? totalCapacity : totalDataSize;
+
+            const double rootPercent = (rootBaseline > 0)
+                ? (100.0 * static_cast<double>(hit->size) / static_cast<double>(rootBaseline))
                 : 0.0;
             showOwnedTooltip(globalPos, hit, m_hoveredTooltip, parentPercent, rootPercent);
         } else {
@@ -3056,19 +3072,32 @@ void TreemapWidget::layoutVisibleChildren(FileNode* node, const QRectF& tileView
         // dimensions.  This locks in split directions on first render so they
         // can never flip during a zoom animation.
         std::vector<FileNode*> children;
-        children.reserve(node->children.size());
+        std::vector<FileNode*> freeChildren;
         qint64 total = 0;
+        qint64 freeTotal = 0;
         for (const auto& child : node->children) {
             if (child->size > 0) {
-                children.push_back(child);
+                if (!node->isVirtual && child->isVirtual) {
+                    freeChildren.push_back(child);
+                    freeTotal += child->size;
+                } else {
+                    children.push_back(child);
+                }
                 total += child->size;
             }
         }
-        if (children.empty() || total <= 0) {
+        if ((children.empty() && freeChildren.empty()) || total <= 0) {
             return;
         }
 
         std::sort(children.begin(), children.end(),
+                  [](const FileNode* a, const FileNode* b) {
+                      if (a->size != b->size) {
+                          return a->size > b->size;
+                      }
+                      return a->name < b->name;
+                  });
+        std::sort(freeChildren.begin(), freeChildren.end(),
                   [](const FileNode* a, const FileNode* b) {
                       if (a->size != b->size) {
                           return a->size > b->size;
@@ -3121,7 +3150,27 @@ void TreemapWidget::layoutVisibleChildren(FileNode* node, const QRectF& tileView
         }
         const qreal ar = tileAr * std::pow(3.0, m_settings.tileAspectBias);
         std::vector<std::pair<FileNode*, QRectF>> normalized;
-        squarifiedLayout(children, QRectF(0, 0, ar, 1.0), total, normalized);
+
+        QRectF layoutRect(0, 0, ar, 1.0);
+        
+        if (!freeChildren.empty() && total > 0) {
+            const double fraction = static_cast<double>(freeTotal) / total;
+            QRectF freeRect;
+
+            if (layoutRect.width() >= layoutRect.height()) {
+                const double w = layoutRect.width() * fraction;
+                freeRect = QRectF(layoutRect.right() - w, layoutRect.top(), w, layoutRect.height());
+                layoutRect.setWidth(layoutRect.width() - w);
+            } else {
+                const double h = layoutRect.height() * fraction;
+                freeRect = QRectF(layoutRect.left(), layoutRect.bottom() - h, layoutRect.width(), h);
+                layoutRect.setHeight(layoutRect.height() - h);
+            }
+
+            squarifiedLayout(freeChildren, freeRect, freeTotal, normalized);
+        }
+        
+        squarifiedLayout(children, layoutRect, total - freeTotal, normalized);
         cacheIt = m_liveSplitCache.insert(node, SplitCacheEntry{ar, std::move(normalized)});
     }
 
