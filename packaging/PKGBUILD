@@ -1,0 +1,35 @@
+pkgname=diskscape
+pkgver=0.9.20
+pkgrel=1
+pkgdesc='Qt-based desktop application for exploring disk usage as an interactive treemap'
+arch=('x86_64')
+url='https://github.com/dvdavd/diskscape'
+license=('MIT')
+depends=(
+    'qt6-base'
+    'qt6-svg'
+)
+makedepends=(
+    'cmake'
+    'git'
+    'qt6-tools'
+)
+source=("${pkgname}::git+https://github.com/dvdavd/diskscape")
+sha256sums=('SKIP')
+
+build() {
+    local cmake_args=(
+        -S "${srcdir}/${pkgname}"
+        -B build
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_INSTALL_PREFIX=/usr
+        -DCMAKE_INSTALL_LIBDIR=lib
+    )
+
+    cmake "${cmake_args[@]}"
+    cmake --build build --target diskscape
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install build
+}
