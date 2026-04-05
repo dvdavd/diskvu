@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #include "mainwindow.h"
 #include "breadcrumbpathbar.h"
+#include "platformthemewatcher.h"
 #include "colorutils.h"
 #include "filesystemwatchcontroller.h"
 #include "iconutils.h"
@@ -1252,6 +1253,10 @@ void MainWindow::setupBackend()
     connect(m_themeSettleTimer, &QTimer::timeout,
             this, &MainWindow::onThemeSettled);
 
+    m_colorSchemeWatcher = new FreedesktopColorSchemeWatcher(this);
+    connect(m_colorSchemeWatcher, &FreedesktopColorSchemeWatcher::colorSchemeChanged,
+            this, &MainWindow::onFreedesktopColorSchemeChanged);
+
     m_watchController = new FilesystemWatchController(this);
     connect(m_watchController, &FilesystemWatchController::refreshRequested,
             this, &MainWindow::launchIncrementalRefresh);
@@ -1330,26 +1335,20 @@ void MainWindow::changeEvent(QEvent* event)
     case QEvent::ScreenChangeInternal: {
         QMainWindow::changeEvent(event);
 
+        if (qApp) dumpThemeState("changeEvent:before", *qApp);
         const bool darkMode = systemUsesDarkColorScheme();
         if (qApp) {
             syncApplicationPaletteToColorScheme(*qApp, darkMode);
             applyMenuFontPolicy(*qApp);
         }
-        {
-            const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
-            const bool chromeDark = widgetChromeUsesDarkColorScheme();
-            const bool trustChrome = scheme == Qt::ColorScheme::Unknown || chromeDark != darkMode;
-            const bool treemapDark = trustChrome ? chromeDark : darkMode;
-            syncColorThemeWithSystem(treemapDark, true);
-        }
-        updatePathBarChrome();
-        updateLandingPageChrome();
-        updateToolbarChrome();
-        updateSizeFilterChrome();
-        clearIconCaches();
-        updateToolbarIcons();
-        if (m_themeSettleTimer)
-            m_themeSettleTimer->start();
+        const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+        const bool chromeDark = widgetChromeUsesDarkColorScheme();
+        const bool trustChrome = scheme == Qt::ColorScheme::Unknown || chromeDark != darkMode;
+        const bool treemapDark = trustChrome ? chromeDark : darkMode;
+        // qDebug("[theme:changeEvent] eventType=%d  darkMode=%d  chromeDark=%d"
+        //        "  trustChrome=%d  treemapDark=%d",
+        //        (int)event->type(), darkMode, chromeDark, trustChrome, treemapDark);
+        applyThemeChange(darkMode, treemapDark);
         break;
     }
     default:
@@ -1360,6 +1359,7 @@ void MainWindow::changeEvent(QEvent* event)
 
 void MainWindow::onThemeSettled()
 {
+    if (qApp) dumpThemeState("onThemeSettled", *qApp);
     if (m_toolbar) {
         updateToolbarChrome();
         m_toolbar->style()->unpolish(m_toolbar);
@@ -1400,6 +1400,30 @@ void MainWindow::onThemeSettled()
         m_directoryTree->viewport()->update();
     }
     updateTypeLegendPanel();
+}
+
+void MainWindow::applyThemeChange(bool darkMode, bool treemapDark)
+{
+    if (qApp) {
+        syncApplicationPaletteToColorScheme(*qApp, darkMode);
+        applyMenuFontPolicy(*qApp);
+    }
+    syncColorThemeWithSystem(treemapDark, true);
+    updatePathBarChrome();
+    updateLandingPageChrome();
+    updateToolbarChrome();
+    updateSizeFilterChrome();
+    clearIconCaches();
+    updateToolbarIcons();
+    if (m_themeSettleTimer)
+        m_themeSettleTimer->start();
+}
+
+void MainWindow::onFreedesktopColorSchemeChanged(bool dark)
+{
+    if (qApp) dumpThemeState("freedesktop", *qApp);
+    // qDebug("[theme:freedesktop] dark=%d", dark);
+    applyThemeChange(dark, dark);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event)

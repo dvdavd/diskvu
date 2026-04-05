@@ -21,6 +21,7 @@
 
 class BreadcrumbPathBar;
 class FilesystemWatchController;
+class FreedesktopColorSchemeWatcher;
 class QComboBox;
 class QAction;
 class QCloseEvent;
@@ -115,6 +116,8 @@ private:
     void setSearchBusy(bool busy);
     void applySearchFromToolbar();
     void onThemeSettled();
+    void onFreedesktopColorSchemeChanged(bool dark);
+    void applyThemeChange(bool darkMode, bool treemapDark);
     void updatePathBarChrome();
     void updateLandingPageChrome();
     void updateToolbarChrome();
@@ -224,6 +227,7 @@ private:
     QSet<QString> m_dirtyPaths;
     QTimer* m_searchDebounceTimer = nullptr;
     QTimer* m_themeSettleTimer = nullptr;
+    FreedesktopColorSchemeWatcher* m_colorSchemeWatcher = nullptr;
     QComboBox* m_sizeFilterCombo = nullptr;
     QString m_activeRefreshPath;
     ViewStatePaths m_preRefreshViewPaths;

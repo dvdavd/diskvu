@@ -415,11 +415,6 @@ void MainWindow::updatePathBarChrome()
         return;
     }
 
-    if (!m_searchEdit->styleSheet().isEmpty()) {
-        m_searchEdit->setStyleSheet(QString());
-    }
-
-    m_searchEdit->ensurePolished();
     int controlHeight = m_searchEdit->sizeHint().height();
     if (m_sizeFilterCombo) {
         m_sizeFilterCombo->ensurePolished();
@@ -430,7 +425,7 @@ void MainWindow::updatePathBarChrome()
         m_sizeFilterCombo->setFixedHeight(controlHeight);
         m_sizeFilterCombo->updateGeometry();
     }
-    m_pathBar->setChromeBorderColor(detectLineEditBorderColor(m_searchEdit));
+    m_pathBar->setChromeBorderColor(landingLocationBorderColor());
 }
 
 void MainWindow::updateLandingPageChrome()
@@ -462,9 +457,8 @@ void MainWindow::updateLandingPageChrome()
     }
 
     if (auto* divider = m_landingPage->findChild<QFrame*>(QStringLiteral("landingDivider"))) {
-        QPalette palette = divider->palette();
-        palette.setColor(QPalette::WindowText, landingLocationBorderColor());
-        divider->setPalette(palette);
+        divider->setStyleSheet(QStringLiteral("background: %1;")
+            .arg(landingLocationBorderColor().name(QColor::HexArgb)));
     }
 
     if (auto* locContainer = m_landingPage->findChild<QWidget*>(QStringLiteral("landingLocationContainer"))) {
@@ -637,14 +631,11 @@ QWidget* MainWindow::createLandingPage()
 
     auto* divider = new QFrame(page);
     divider->setObjectName(QStringLiteral("landingDivider"));
-    divider->setFrameShape(QFrame::VLine);
-    divider->setFrameShadow(QFrame::Plain);
+    divider->setFrameShape(QFrame::NoFrame);
     divider->setFixedWidth(1);
-    {
-        QPalette p = divider->palette();
-        p.setColor(QPalette::WindowText, landingLocationBorderColor());
-        divider->setPalette(p);
-    }
+    divider->setAttribute(Qt::WA_StyledBackground, true);
+    divider->setStyleSheet(QStringLiteral("background: %1;")
+        .arg(landingLocationBorderColor().name(QColor::HexArgb)));
 
     auto* rightPanel = new QScrollArea(page);
     rightPanel->setObjectName(QStringLiteral("landingRightPanel"));

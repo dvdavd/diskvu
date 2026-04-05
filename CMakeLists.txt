@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(diskscape VERSION 0.9.19 LANGUAGES CXX)
+project(diskscape VERSION 0.9.20 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,6 +53,8 @@ qt_add_executable(diskscape
     src/mainwindow.h
     src/mainwindow_utils.h
     src/mainwindow_utils.cpp
+    src/platformthemewatcher.h
+    src/platformthemewatcher.cpp
     src/mainwindow_landing.cpp
     src/mainwindow.cpp
     src/nodepropertiesdialog.h

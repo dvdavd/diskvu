@@ -11,7 +11,6 @@
 #include <QHash>
 #include <QIcon>
 #include <QLabel>
-#include <QLineEdit>
 #include <QList>
 #include <QPointF>
 #include <QSettings>
@@ -52,9 +51,9 @@ QString landingLocationStyleSheet();
 QString normalizedFilesystemPath(const QString& path);
 QList<BreadcrumbPathSegment> breadcrumbPathSegments(const QString& path);
 bool systemUsesDarkColorScheme();
+void dumpThemeState(const char* location, const QApplication& app);
 QSettings appSettings();
 void saveSettingsAsync(std::function<void(QSettings&)> fn);
-QColor detectLineEditBorderColor(QLineEdit* lineEdit);
 QIcon makeColorSwatchIcon(const QColor& color);
 QIcon makeTintedFolderIcon(const QColor& color);
 QIcon makeRecoloredSvgIcon(const QString& svgPath, const QColor& color);

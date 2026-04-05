@@ -7,6 +7,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDebug>
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -198,6 +199,25 @@ QPalette fallbackDarkApplicationPalette()
 
 } // namespace
 
+void dumpThemeState(const char* location, const QApplication& app)
+{
+    const auto scheme = QGuiApplication::styleHints()->colorScheme();
+    const char* schemeStr = scheme == Qt::ColorScheme::Dark  ? "Dark"
+                          : scheme == Qt::ColorScheme::Light ? "Light"
+                                                             : "Unknown";
+    const QPalette appPal   = app.palette();
+    const QPalette stylePal = app.style() ? app.style()->standardPalette() : QPalette();
+    // qDebug("[theme:%s] colorScheme=%s  appPalWindow=%.2f(%s)  stylePalWindow=%.2f(%s)"
+    //        "  initialized=%d  overrideActive=%d",
+    //        location, schemeStr,
+    //        appPal.color(QPalette::Window).lightnessF(),
+    //        paletteLooksDark(appPal) ? "dark" : "light",
+    //        stylePal.color(QPalette::Window).lightnessF(),
+    //        paletteLooksDark(stylePal) ? "dark" : "light",
+    //        app.property("diskscapePaletteInitialized").toBool(),
+    //        app.property("diskscapePaletteOverride").toBool());
+}
+
 QFont generalUiFont()
 {
     return QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -215,6 +235,7 @@ void applyMenuFontPolicy(QApplication& app)
 
 bool syncApplicationPaletteToColorScheme(QApplication& app, bool darkMode)
 {
+    dumpThemeState(darkMode ? "sync(dark)" : "sync(light)", app);
     const bool initialized = app.property(kPaletteInitializedProperty).toBool();
     const bool overrideActive = app.property(kPaletteOverrideProperty).toBool();
     const bool currentDark = paletteLooksDark(app.palette());
@@ -229,7 +250,7 @@ bool syncApplicationPaletteToColorScheme(QApplication& app, bool darkMode)
         const bool cachedTargetValid = isUsablePalette(cachedTargetPalette)
             && paletteLooksDark(cachedTargetPalette) == darkMode;
 
-        if (cachedTargetValid && currentDark != darkMode) {
+        if (cachedTargetValid && currentDark != darkMode && styleDark == darkMode) {
             app.setPalette(cachedTargetPalette);
             setPaletteSyncState(app, true, false);
             return true;
@@ -292,7 +313,7 @@ bool widgetChromeUsesDarkColorScheme()
 QColor landingLocationBorderColor()
 {
     const QPalette palette = qApp ? qApp->palette() : QPalette();
-    return softenedReadableBorderColor(palette, widgetChromeUsesDarkColorScheme() ? 0.30 : 0.22);
+    return softenedReadableBorderColor(palette, 0.25);
 }
 
 QIcon menuActionIcon(std::initializer_list<const char*> names,
@@ -447,50 +468,6 @@ void saveSettingsAsync(std::function<void(QSettings&)> fn)
     });
 }
 
-QColor detectLineEditBorderColor(QLineEdit* lineEdit)
-{
-    if (!lineEdit) {
-        return {};
-    }
-
-    lineEdit->ensurePolished();
-    const QSize size = lineEdit->sizeHint().expandedTo(QSize(48, 24));
-    lineEdit->resize(size);
-
-    QImage image(size, QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    lineEdit->render(&image);
-
-    const QColor centerColor = image.pixelColor(image.width() / 2, image.height() / 2);
-    std::unordered_map<QRgb, int> counts;
-    QRgb best = 0;
-    int bestCount = 0;
-
-    auto considerPixel = [&](int x, int y) {
-        const QColor color = image.pixelColor(x, y);
-        if (color.alpha() == 0 || color == centerColor) {
-            return;
-        }
-
-        const QRgb key = color.rgba();
-        const int count = ++counts[key];
-        if (count > bestCount) {
-            bestCount = count;
-            best = key;
-        }
-    };
-
-    for (int x = 0; x < image.width(); ++x) {
-        considerPixel(x, 0);
-        considerPixel(x, image.height() - 1);
-    }
-    for (int y = 1; y + 1 < image.height(); ++y) {
-        considerPixel(0, y);
-        considerPixel(image.width() - 1, y);
-    }
-
-    return bestCount > 0 ? QColor::fromRgba(best) : lineEdit->palette().color(QPalette::Mid);
-}
 
 QIcon makeColorSwatchIcon(const QColor& color)
 {
