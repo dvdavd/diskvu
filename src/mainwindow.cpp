@@ -764,7 +764,7 @@ void MainWindow::setupToolbar(QSettings& store)
     m_searchEdit->setPlaceholderText(searchPatternPlaceholderText());
     m_searchEdit->setFixedWidth(190);
     m_searchEdit->setToolTip(tr("Type a filename pattern and press Enter to search"));
-    m_pathBar->setFixedHeight(m_searchEdit->sizeHint().height());
+    m_pathBar->setFixedHeight(qMax(m_searchEdit->sizeHint().height(), m_pathBar->sizeHint().height()));
     updatePathBarChrome();
     connect(m_searchEdit, &QLineEdit::returnPressed, this, &MainWindow::applySearchFromToolbar);
     connect(m_searchEdit, &QLineEdit::textChanged, this, [this](const QString& text) {

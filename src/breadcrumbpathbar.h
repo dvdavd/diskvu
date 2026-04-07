@@ -23,6 +23,9 @@ class BreadcrumbPathBar : public QWidget {
 public:
     explicit BreadcrumbPathBar(QWidget* parent = nullptr);
 
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+
     void setPath(const QString& path);
     void setScanRootPath(const QString& path);
     QString path() const;

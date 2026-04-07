@@ -415,7 +415,7 @@ void MainWindow::updatePathBarChrome()
         return;
     }
 
-    int controlHeight = m_searchEdit->sizeHint().height();
+    int controlHeight = qMax(m_searchEdit->sizeHint().height(), m_pathBar->sizeHint().height());
     if (m_sizeFilterCombo) {
         m_sizeFilterCombo->ensurePolished();
         controlHeight = qMax(controlHeight, m_sizeFilterCombo->sizeHint().height());

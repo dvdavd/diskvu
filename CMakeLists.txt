@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(diskscape VERSION 0.9.21 LANGUAGES CXX)
+project(diskscape VERSION 0.9.22 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -115,7 +115,7 @@ install(FILES LICENSE
 )
 
 if(UNIX AND NOT APPLE)
-    install(FILES assets/diskscape.svg
+    install(FILES assets/diskscape_appicon.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
         RENAME io.github.dvdavd.Diskscape.svg
     )

@@ -16,6 +16,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QEvent>
+#include <QFontMetrics>
 #include <QStackedLayout>
 #include <QStyle>
 #include <QStringListModel>
@@ -37,7 +38,7 @@ BreadcrumbPathBar::BreadcrumbPathBar(QWidget* parent)
     m_fieldFrame = new QWidget(this);
     m_fieldFrame->setObjectName(QStringLiteral("breadcrumbField"));
     auto* fieldLayout = new QHBoxLayout(m_fieldFrame);
-    fieldLayout->setContentsMargins(6, 0, 4, 0);
+    fieldLayout->setContentsMargins(6, 2, 4, 2);
     fieldLayout->setSpacing(0);
 
     m_modeLayout = new QStackedLayout();
@@ -58,6 +59,8 @@ BreadcrumbPathBar::BreadcrumbPathBar(QWidget* parent)
 
     m_lineEdit = new QLineEdit(this);
     m_lineEdit->setFont(generalFont);
+    m_lineEdit->setFrame(false);
+    m_lineEdit->setTextMargins(0, 0, 0, 0);
     m_completionModel = new QStringListModel(this);
     m_completer = new QCompleter(m_completionModel, this);
     m_completer->setCompletionMode(QCompleter::PopupCompletion);
@@ -102,6 +105,30 @@ BreadcrumbPathBar::BreadcrumbPathBar(QWidget* parent)
     refreshChromeStyles();
     m_breadcrumbView->setFont(generalFont);
     rebuildCrumbs();
+}
+
+QSize BreadcrumbPathBar::sizeHint() const
+{
+    const QMargins outerMargins = layout() ? layout()->contentsMargins() : QMargins();
+    const QMargins innerMargins = (m_fieldFrame && m_fieldFrame->layout())
+        ? m_fieldFrame->layout()->contentsMargins()
+        : QMargins();
+    const QFontMetrics metrics(generalUiFont());
+    const int buttonHeight = metrics.height() + 4;
+    const int editorHeight = m_lineEdit ? m_lineEdit->minimumSizeHint().height() : 0;
+    const int barHeight = qMax(qMax(buttonHeight, editorHeight),
+        m_editButton ? m_editButton->sizeHint().height() : 0);
+
+    QSize hint = QWidget::sizeHint();
+    hint.setHeight(barHeight
+        + innerMargins.top() + innerMargins.bottom()
+        + outerMargins.top() + outerMargins.bottom());
+    return hint;
+}
+
+QSize BreadcrumbPathBar::minimumSizeHint() const
+{
+    return sizeHint();
 }
 
 void BreadcrumbPathBar::setPath(const QString& path)

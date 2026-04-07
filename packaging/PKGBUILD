@@ -1,5 +1,5 @@
 pkgname=diskscape
-pkgver=0.9.21
+pkgver=0.9.22
 pkgrel=1
 pkgdesc='Qt-based desktop application for exploring disk usage as an interactive treemap'
 arch=('x86_64')

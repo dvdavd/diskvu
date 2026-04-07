@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>assets/diskscape.svg</file>
+        <file>assets/diskscape_appicon.svg</file>
         <file>assets/tabler-icons/menu-2.svg</file>
         <file>assets/tabler-icons/settings.svg</file>
         <file>assets/tabler-icons/list-details.svg</file>

@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
     app.setApplicationVersion(QString::fromLatin1(DISKSCAPE_VERSION));
     app.setOrganizationName(QStringLiteral("diskscape"));
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("io.github.dvdavd.Diskscape"),
-                                       QIcon(QStringLiteral(":/assets/diskscape.svg"))));
+                                       QIcon(QStringLiteral(":/assets/diskscape_appicon.svg"))));
     app.setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont), "QMenu");
     syncApplicationPaletteToColorScheme(app, systemUsesDarkColorScheme());
 
