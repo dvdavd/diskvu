@@ -16,6 +16,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFontComboBox>
+#include <QFontMetrics>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
@@ -46,6 +47,8 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <cmath>
 
 static void drawGradientSwatch(QPainter* painter, const QRect& r, const QList<QColor>& stops)
 {
@@ -920,10 +923,22 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     connect(m_lightModeColorTheme, qOverload<int>(&QComboBox::currentIndexChanged), this, &SettingsDialog::refreshPreview);
     connect(m_darkModeColorTheme, qOverload<int>(&QComboBox::currentIndexChanged), this, &SettingsDialog::refreshPreview);
     connect(m_headerHeight, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &SettingsDialog::refreshPreview);
-    connect(m_headerFontFamily, &QFontComboBox::currentFontChanged, this, &SettingsDialog::refreshPreview);
-    connect(m_headerFontSize, qOverload<int>(&QSpinBox::valueChanged), this, &SettingsDialog::refreshPreview);
-    connect(m_headerFontBold, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
-    connect(m_headerFontItalic, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
+    connect(m_headerFontFamily, &QFontComboBox::currentFontChanged, this, [this](const QFont&) {
+        ensureHeaderHeightFitsFont();
+        refreshPreview();
+    });
+    connect(m_headerFontSize, qOverload<int>(&QSpinBox::valueChanged), this, [this](int) {
+        ensureHeaderHeightFitsFont();
+        refreshPreview();
+    });
+    connect(m_headerFontBold, &QCheckBox::toggled, this, [this](bool) {
+        ensureHeaderHeightFitsFont();
+        refreshPreview();
+    });
+    connect(m_headerFontItalic, &QCheckBox::toggled, this, [this](bool) {
+        ensureHeaderHeightFitsFont();
+        refreshPreview();
+    });
     connect(m_fileFontFamily, &QFontComboBox::currentFontChanged, this, &SettingsDialog::refreshPreview);
     connect(m_fileFontSize, qOverload<int>(&QSpinBox::valueChanged), this, &SettingsDialog::refreshPreview);
     connect(m_fileFontBold, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
@@ -1515,10 +1530,21 @@ void SettingsDialog::applySettingsToFields(const TreemapSettings& settings)
 {
     m_workingSettings = settings;
     m_selectedColorThemeId = settings.activeColorThemeId;
-    m_headerHeight->setValue(settings.headerHeight);
-    m_headerFontFamily->setCurrentFont(settings.headerFontFamily.isEmpty()
+    QFont headerFont = settings.headerFontFamily.isEmpty()
         ? font()
-        : QFont(settings.headerFontFamily));
+        : QFont(settings.headerFontFamily);
+    headerFont.setPointSize(qMax(1, settings.headerFontSize));
+    headerFont.setBold(settings.headerFontBold);
+    headerFont.setItalic(settings.headerFontItalic);
+    const double minimumHeaderHeight = minimumHeaderHeightForFont(headerFont);
+    const QSignalBlocker headerHeightBlocker(m_headerHeight);
+    const QSignalBlocker headerFontFamilyBlocker(m_headerFontFamily);
+    const QSignalBlocker headerFontSizeBlocker(m_headerFontSize);
+    const QSignalBlocker headerFontBoldBlocker(m_headerFontBold);
+    const QSignalBlocker headerFontItalicBlocker(m_headerFontItalic);
+    m_headerHeight->setMinimum(minimumHeaderHeight);
+    m_headerHeight->setValue(qMax(settings.headerHeight, minimumHeaderHeight));
+    m_headerFontFamily->setCurrentFont(headerFont);
     m_headerFontSize->setValue(settings.headerFontSize);
     m_headerFontBold->setChecked(settings.headerFontBold);
     m_headerFontItalic->setChecked(settings.headerFontItalic);
@@ -1580,6 +1606,30 @@ void SettingsDialog::applySettingsToFields(const TreemapSettings& settings)
     onFileTypeGroupSelectionChanged();
     populateColorThemeSelectors();
     loadSelectedColorThemeIntoFields();
+}
+
+double SettingsDialog::minimumHeaderHeightForFont(const QFont& font) const
+{
+    return qMax(1.0, std::ceil(QFontMetrics(font).height() + 4.0));
+}
+
+double SettingsDialog::minimumHeaderHeightForCurrentFont() const
+{
+    QFont headerFont = m_headerFontFamily->currentFont();
+    headerFont.setPointSize(qMax(1, m_headerFontSize->value()));
+    headerFont.setBold(m_headerFontBold->isChecked());
+    headerFont.setItalic(m_headerFontItalic->isChecked());
+    return minimumHeaderHeightForFont(headerFont);
+}
+
+void SettingsDialog::ensureHeaderHeightFitsFont()
+{
+    const double minimumHeight = minimumHeaderHeightForCurrentFont();
+    const QSignalBlocker blocker(m_headerHeight);
+    m_headerHeight->setMinimum(minimumHeight);
+    if (m_headerHeight->value() < minimumHeight) {
+        m_headerHeight->setValue(minimumHeight);
+    }
 }
 
 TreemapSettings SettingsDialog::settings() const

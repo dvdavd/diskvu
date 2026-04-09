@@ -62,6 +62,9 @@ private:
     void populateColorThemeSelectors();
     void refreshPreview();
     void restoreDefaultsPreservingCustomThemes();
+    void ensureHeaderHeightFitsFont();
+    double minimumHeaderHeightForFont(const QFont& font) const;
+    double minimumHeaderHeightForCurrentFont() const;
     void storeSelectedColorThemeInto(TreemapSettings& settings) const;
     void updateFolderBaseColorButton();
     void updateHighlightColorButton();

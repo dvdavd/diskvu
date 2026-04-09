@@ -12,6 +12,31 @@
 #include <QUuid>
 #include <cmath>
 
+namespace {
+
+qreal defaultHeaderHeightForFont(const QString& family, int pointSize, bool bold, bool italic)
+{
+    QFont headerFont = QApplication::instance()
+        ? QFontDatabase::systemFont(QFontDatabase::GeneralFont)
+        : QFont();
+    if (!family.isEmpty()) {
+        headerFont.setFamily(family);
+    }
+    headerFont.setPointSize(qMax(1, pointSize));
+    headerFont.setBold(bold);
+    headerFont.setItalic(italic);
+    return qMax<qreal>(1.0, std::ceil(QFontMetrics(headerFont).height() + 4.0));
+}
+
+QFont defaultTreemapFont()
+{
+    return QApplication::instance()
+        ? QFontDatabase::systemFont(QFontDatabase::GeneralFont)
+        : QFont();
+}
+
+}
+
 QColor defaultFreeSpaceColor()
 {
     if (QApplication::instance()) {
@@ -142,27 +167,33 @@ QColor TreemapSettings::defaultHighlightColor()
 
 void TreemapSettings::applyDefaults(TreemapSettings& settings)
 {
-    settings.headerHeight = 18.0;
+    settings.headerHeight = defaultHeaderHeightForFont(QString(), 9, false, false);
     settings.headerFontFamily.clear();
-    settings.headerFontSize = 8;
+    settings.headerFontSize = 9;
     settings.headerFontBold = false;
     settings.headerFontItalic = false;
     if (QApplication::instance()) {
-        QFont smallFont = QFontDatabase::systemFont(QFontDatabase::SmallestReadableFont);
-        const int pointSize = smallFont.pointSize() > 0
-            ? smallFont.pointSize()
-            : QFontInfo(smallFont).pointSize();
-        settings.headerFontFamily = smallFont.family();
-        settings.headerFontSize = qMax(1, pointSize);
-        settings.headerFontBold = smallFont.bold();
-        settings.headerFontItalic = smallFont.italic();
-        settings.headerHeight = qMax<qreal>(1.0, std::ceil(QFontMetrics(smallFont).height() + 4.0));
+        QFont uiFont = defaultTreemapFont();
+        settings.headerFontFamily = uiFont.family();
+        settings.headerFontBold = uiFont.bold();
+        settings.headerFontItalic = uiFont.italic();
+        settings.headerHeight = defaultHeaderHeightForFont(
+            settings.headerFontFamily,
+            settings.headerFontSize,
+            settings.headerFontBold,
+            settings.headerFontItalic);
     }
 
     settings.fileFontFamily.clear();
     settings.fileFontSize = 8;
     settings.fileFontBold = false;
     settings.fileFontItalic = false;
+    if (QApplication::instance()) {
+        QFont uiFont = defaultTreemapFont();
+        settings.fileFontFamily = uiFont.family();
+        settings.fileFontBold = uiFont.bold();
+        settings.fileFontItalic = uiFont.italic();
+    }
     settings.folderColorMode = 1;
     settings.folderBaseColor = QColor::fromHsl(210, 200, 150);
     settings.folderColorSaturation = 0.85;
@@ -418,9 +449,13 @@ void TreemapSettings::ensureColorThemes()
 
 void TreemapSettings::sanitize()
 {
-    headerHeight = qMax(1.0, headerHeight);
     headerFontFamily = headerFontFamily.trimmed();
     headerFontSize = qMax(1, headerFontSize);
+    headerHeight = qMax(headerHeight, defaultHeaderHeightForFont(
+        headerFontFamily,
+        headerFontSize,
+        headerFontBold,
+        headerFontItalic));
     fileFontFamily = fileFontFamily.trimmed();
     fileFontSize = qMax(1, fileFontSize);
     if (folderColorMode != SingleHue && folderColorMode != DepthGradient) {
