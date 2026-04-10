@@ -137,6 +137,7 @@ private:
     void launchIncrementalRefresh(const QString& refreshPath);
     void applyTreemapSettings(const TreemapSettings& settings, bool persist);
     void recolorCurrentTree();
+    void recolorNodeSubtree(FileNode* node);
     void markFolder(FileNode* node, FolderMark mark);
     void clearAllMarkedFolders();
     void syncColorThemeWithSystem(bool darkMode, bool persist);

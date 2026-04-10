@@ -31,6 +31,7 @@ QColor fileColorForName(const QString& name, const TreemapSettings& settings);
 void assignColors(FileNode* root, const TreemapSettings& settings);
 void assignColors(FileNode* root, FileNode* liveRoot, const TreemapSettings& settings);
 void assignColorsForSubtree(FileNode* node, int depth, float branchHue, const TreemapSettings& settings);
+void assignColorsForSubtree(FileNode* node, int depth, float branchHue, bool inMarkedBranch, const TreemapSettings& settings);
 uint64_t packFileExt(const QString& name);
 QString fileTypeLabelForName(const QString& name);
 QString fileTypeLabelForNode(const FileNode* node);

@@ -284,6 +284,17 @@ QIcon directoryTreeFilesIcon()
         QStringLiteral(":/assets/tabler-icons/files.svg"));
 }
 
+void refreshDirectoryTreeItemTextBrushes(QTreeWidget* tree, QTreeWidgetItem* item)
+{
+    if (!tree || !item) {
+        return;
+    }
+    applyStableItemTextBrush(tree, item);
+    for (int i = 0; i < item->childCount(); ++i) {
+        refreshDirectoryTreeItemTextBrushes(tree, item->child(i));
+    }
+}
+
 void refreshDirectoryTreeIcons(QTreeWidgetItem* item)
 {
     if (!item) {
@@ -1570,8 +1581,10 @@ void MainWindow::onThemeSettled()
 
     if (m_directoryTree) {
         applyComfortableItemSpacing(m_directoryTree);
-        for (int i = 0; i < m_directoryTree->topLevelItemCount(); ++i)
+        for (int i = 0; i < m_directoryTree->topLevelItemCount(); ++i) {
             refreshDirectoryTreeIcons(m_directoryTree->topLevelItem(i));
+            refreshDirectoryTreeItemTextBrushes(m_directoryTree, m_directoryTree->topLevelItem(i));
+        }
         m_directoryTree->viewport()->update();
     }
     if (m_typeLegendTree) {
@@ -2916,6 +2929,68 @@ void MainWindow::recolorCurrentTree()
     }));
 }
 
+// Recolor only node's subtree on a background thread, then repaint.
+// Falls back to a full recolor when a live scan is in progress.
+void MainWindow::recolorNodeSubtree(FileNode* node)
+{
+    if (!node || !m_scanResult.root) return;
+
+    if (m_liveScanResult.root) {
+        recolorCurrentTree();
+        return;
+    }
+
+    FileNode* const scanRoot = m_scanResult.root;
+    const TreemapSettings settings = m_settings;
+    const auto arena = m_scanResult.arena;
+
+    // Single walk up to scanRoot: count depth, and find the nearest ancestor color
+    // mark (= the effective branchHue/inMarkedBranch to pass for the CLEAR case).
+    // For the SET case these are overridden immediately by the mark on node itself,
+    // so we only really need depth there — but the loop is trivially fast either way.
+    int depth = 0;
+    float branchHue = 0.0f;
+    bool inMarkedBranch = false;
+    {
+        const FileNode* topChild = node; // updated to direct child of scanRoot
+        for (const FileNode* cur = node->parent; cur && cur != scanRoot; cur = cur->parent) {
+            ++depth;
+            topChild = cur;
+            if (!inMarkedBranch) {
+                const auto it = settings.folderColorMarks.constFind(cur->computePath());
+                if (it != settings.folderColorMarks.constEnd()) {
+                    switch (it.value()) {
+                    case FolderMark::ColorRed:    branchHue = 0.0f;           inMarkedBranch = true; break;
+                    case FolderMark::ColorOrange: branchHue = 30.0f  / 360.0f; inMarkedBranch = true; break;
+                    case FolderMark::ColorYellow: branchHue = 60.0f  / 360.0f; inMarkedBranch = true; break;
+                    case FolderMark::ColorGreen:  branchHue = 120.0f / 360.0f; inMarkedBranch = true; break;
+                    case FolderMark::ColorBlue:   branchHue = 240.0f / 360.0f; inMarkedBranch = true; break;
+                    case FolderMark::ColorPurple: branchHue = 280.0f / 360.0f; inMarkedBranch = true; break;
+                    default: break;
+                    }
+                }
+            }
+        }
+        ++depth; // node itself
+        if (!inMarkedBranch)
+            branchHue = ColorUtils::topLevelFolderBranchHue(topChild->name, settings);
+    }
+
+    auto* watcher = new QFutureWatcher<void>(this);
+    connect(watcher, &QFutureWatcher<void>::finished, this, [this, watcher, scanRoot]() {
+        watcher->deleteLater();
+        if (m_treemapWidget) m_treemapWidget->viewport()->update();
+        if (m_directoryTree && m_scanResult.root == scanRoot) {
+            for (int i = 0; i < m_directoryTree->topLevelItemCount(); ++i)
+                refreshDirectoryTreeIcons(m_directoryTree->topLevelItem(i));
+            m_directoryTree->viewport()->update();
+        }
+    });
+    watcher->setFuture(QtConcurrent::run([node, depth, branchHue, inMarkedBranch, settings, arena]() {
+        ColorUtils::assignColorsForSubtree(node, depth, branchHue, inMarkedBranch, settings);
+    }));
+}
+
 void MainWindow::markFolder(FileNode* node, FolderMark mark)
 {
     if (!node) return;
@@ -2928,7 +3003,17 @@ void MainWindow::markFolder(FileNode* node, FolderMark mark)
     } else {
         m_settings.folderIconMarks.insert(path, mark);
     }
-    applyTreemapSettings(m_settings, true);
+    m_settings.sanitize();
+    saveSettingsAsync([settings = m_settings](QSettings& store) { settings.save(store); });
+    if (m_treemapWidget) m_treemapWidget->applySettings(m_settings);
+    m_clearMarksAction->setEnabled(
+        !m_settings.folderColorMarks.isEmpty() || !m_settings.folderIconMarks.isEmpty());
+    if (isFolderColorMark(mark) || mark == FolderMark::None) {
+        recolorNodeSubtree(node);
+    } else {
+        // Icon-only mark: no color recomputation needed.
+        if (m_treemapWidget) m_treemapWidget->viewport()->update();
+    }
 }
 
 void MainWindow::clearAllMarkedFolders()
@@ -3258,11 +3343,21 @@ void MainWindow::onNodeContextMenuRequested(FileNode* node, QPoint globalPos)
             if (isFolderColorMark(mark) && mark == currentColorMark) {
                 const QString path = node->computePath();
                 m_settings.folderColorMarks.remove(path);
-                applyTreemapSettings(m_settings, true);
+                m_settings.sanitize();
+                saveSettingsAsync([settings = m_settings](QSettings& store) { settings.save(store); });
+                if (m_treemapWidget) m_treemapWidget->applySettings(m_settings);
+                m_clearMarksAction->setEnabled(
+                    !m_settings.folderColorMarks.isEmpty() || !m_settings.folderIconMarks.isEmpty());
+                recolorNodeSubtree(node);
             } else if (isFolderIconMark(mark) && mark == currentIconMark) {
                 const QString path = node->computePath();
                 m_settings.folderIconMarks.remove(path);
-                applyTreemapSettings(m_settings, true);
+                m_settings.sanitize();
+                saveSettingsAsync([settings = m_settings](QSettings& store) { settings.save(store); });
+                if (m_treemapWidget) m_treemapWidget->applySettings(m_settings);
+                m_clearMarksAction->setEnabled(
+                    !m_settings.folderColorMarks.isEmpty() || !m_settings.folderIconMarks.isEmpty());
+                if (m_treemapWidget) m_treemapWidget->viewport()->update();
             } else {
                 markFolder(node, mark);
             }

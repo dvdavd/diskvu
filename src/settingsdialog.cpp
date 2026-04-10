@@ -3,7 +3,7 @@
 #include "settingsdialog.h"
 
 #include "colorutils.h"
-#include "iconutils.h"
+#include "svgutils.h"
 #include "mainwindow_utils.h"
 #include "treemapwidget.h"
 
@@ -205,18 +205,19 @@ public:
 // is always vertically centered regardless of which Qt style is active.
 class SectionButton : public QAbstractButton {
 public:
-    SectionButton(const QString& text, const QIcon& icon, QWidget* parent = nullptr)
+    SectionButton(const QString& text, const QString& svgResource, QWidget* parent = nullptr)
         : QAbstractButton(parent)
+        , m_svgResource(svgResource)
     {
         setCheckable(true);
         setAttribute(Qt::WA_Hover);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         setMinimumWidth(132);
 
-        auto* iconLabel = new QLabel(this);
-        iconLabel->setPixmap(icon.pixmap(28, 28));
-        iconLabel->setAlignment(Qt::AlignCenter);
-        iconLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_iconLabel = new QLabel(this);
+        m_iconLabel->setPixmap(makeIconPixmap());
+        m_iconLabel->setAlignment(Qt::AlignCenter);
+        m_iconLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
 
         auto* textLabel = new QLabel(text, this);
         textLabel->setAlignment(Qt::AlignCenter);
@@ -226,7 +227,7 @@ public:
         vl->setContentsMargins(4, 0, 4, 0);
         vl->setSpacing(4);
         vl->addStretch();
-        vl->addWidget(iconLabel);
+        vl->addWidget(m_iconLabel);
         vl->addWidget(textLabel);
         vl->addStretch();
     }
@@ -235,6 +236,16 @@ public:
     QSize minimumSizeHint() const override { return {80, 60}; }
 
 protected:
+    void changeEvent(QEvent* event) override {
+        QAbstractButton::changeEvent(event);
+        if (event->type() == QEvent::PaletteChange
+                || event->type() == QEvent::ApplicationPaletteChange
+                || event->type() == QEvent::StyleChange) {
+            if (m_iconLabel)
+                m_iconLabel->setPixmap(makeIconPixmap());
+        }
+    }
+
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);
         const QColor highlight = palette().color(QPalette::Highlight);
@@ -249,6 +260,17 @@ protected:
             p.fillRect(rect(), bg);
         }
     }
+
+private:
+    QPixmap makeIconPixmap() const {
+        const QColor color = qApp
+            ? qApp->palette().color(QPalette::WindowText)
+            : QColor(QStringLiteral("#444444"));
+        return makeRecoloredSvgIcon(m_svgResource, color).pixmap(28, 28);
+    }
+
+    QString m_svgResource;
+    QLabel* m_iconLabel = nullptr;
 };
 
 QDoubleSpinBox* SettingsDialog::createDoubleSpinBox(double min, double max, double step, int decimals)
@@ -1181,10 +1203,6 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     sectionNavLayout->setContentsMargins(0, 0, 0, 0);
     sectionNavLayout->setSpacing(4);
 
-    const auto makeSectionIcon = [](std::initializer_list<const char*> iconNames, const QString& light, const QString& dark) {
-        return IconUtils::themeIcon(iconNames, light, dark);
-    };
-
     m_pages = new QStackedWidget(this);
     auto* pages = m_pages;
     pages->addWidget(appearanceContainer);  // 0
@@ -1210,8 +1228,8 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     auto* sectionButtons = m_sectionButtons;
     sectionButtons->setExclusive(true);
 
-    const auto addSectionButton = [&](const QString& label, const QIcon& icon, int index) {
-        auto* button = new SectionButton(label, icon, sectionNav);
+    const auto addSectionButton = [&](const QString& label, const QString& svgResource, int index) {
+        auto* button = new SectionButton(label, svgResource, sectionNav);
         button->setAutoExclusive(true);
         sectionNavLayout->addWidget(button);
         sectionButtons->addButton(button, index);
@@ -1223,39 +1241,27 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
 
     auto* appearanceButton = addSectionButton(
         tr("Appearance"),
-        makeSectionIcon({"preferences-desktop-theme"},
-            QStringLiteral(":/assets/tabler-icons/adjustments-horizontal.svg"),
-            QStringLiteral(":/assets/tabler-icons/adjustments-horizontal.svg")),
+        QStringLiteral(":/assets/tabler-icons/adjustments-horizontal.svg"),
         0);
     addSectionButton(
         tr("Colours"),
-        makeSectionIcon({"color-management"},
-            QStringLiteral(":/assets/tabler-icons/palette.svg"),
-            QStringLiteral(":/assets/tabler-icons/palette.svg")),
+        QStringLiteral(":/assets/tabler-icons/palette.svg"),
         1);
     addSectionButton(
         tr("File Types"),
-        makeSectionIcon({"text-x-generic"},
-            QStringLiteral(":/assets/tabler-icons/files.svg"),
-            QStringLiteral(":/assets/tabler-icons/files.svg")),
+        QStringLiteral(":/assets/tabler-icons/files.svg"),
         2);
     addSectionButton(
         tr("Previews"),
-        makeSectionIcon({"image-x-generic"},
-            QStringLiteral(":/assets/tabler-icons/photo.svg"),
-            QStringLiteral(":/assets/tabler-icons/photo.svg")),
+        QStringLiteral(":/assets/tabler-icons/photo.svg"),
         3);
     addSectionButton(
         tr("Performance"),
-        makeSectionIcon({"preferences-system-performance"},
-            QStringLiteral(":/assets/tabler-icons/brand-speedtest.svg"),
-            QStringLiteral(":/assets/tabler-icons/brand-speedtest.svg")),
+        QStringLiteral(":/assets/tabler-icons/brand-speedtest.svg"),
         4);
     addSectionButton(
         tr("Exclusions"),
-        makeSectionIcon({"folder-blacklist", "folder"},
-            QStringLiteral(":/assets/tabler-icons/folders-off.svg"),
-            QStringLiteral(":/assets/tabler-icons/folders-off.svg")),
+        QStringLiteral(":/assets/tabler-icons/folders-off.svg"),
         5);
     appearanceButton->setChecked(true);
     sectionNavLayout->addStretch(1);

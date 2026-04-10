@@ -533,6 +533,12 @@ void assignColorsForSubtree(FileNode* node, int depth, float branchHue, const Tr
     assignColorsRecurse(node, depth, branchHue, fileColorLookup, settings, node->parent ? node->parent->computePath() : QString(), false);
 }
 
+void assignColorsForSubtree(FileNode* node, int depth, float branchHue, bool inMarkedBranch, const TreemapSettings& settings)
+{
+    const QHash<uint64_t, QRgb> fileColorLookup = buildFileColorLookup(settings);
+    assignColorsRecurse(node, depth, branchHue, fileColorLookup, settings, node->parent ? node->parent->computePath() : QString(), inMarkedBranch);
+}
+
 static void assignColorsWithLookup(FileNode* root, const QHash<uint64_t, QRgb>& fileColorLookup,
                                    const TreemapSettings& settings)
 {
