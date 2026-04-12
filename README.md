@@ -8,8 +8,9 @@ Diskscape is a Qt-based Linux desktop application for exploring disk usage as an
 
 - Interactive treemap navigation with free zoom, breadcrumb and tree navigation
 - Background refresh and filesystem watching for the active tree
-- Search and file-type highlighting
-- File-type legend with aggregate size and item counts
+- Search and filter by name, size, date and custom folder marks
+- Optional image and video thumbnail generation
+- File-type list with aggregate size and item counts
 - Customisable themes, file colors, and automatic dark mode switching
 
 ## Requirements
