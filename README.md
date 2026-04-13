@@ -71,7 +71,7 @@ The main app target is produced as `diskvu`:
 
 ```bash
 ./build/diskvu
-./build/Diskvu   # (macOS)
+./build/Diskvu.app   # (macOS)
 ```
 
 macOS and Windows builds are currently unsupported but fully functional.
