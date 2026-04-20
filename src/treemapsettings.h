@@ -162,6 +162,7 @@ struct TreemapSettings {
 
     bool showThumbnails = false;
     bool showVideoThumbnails = false;
+    bool showFileFlags = true;
     int thumbnailResolution = 256;
     int thumbnailMinTileSize = 80;
     int thumbnailMemoryLimitMB = 256;

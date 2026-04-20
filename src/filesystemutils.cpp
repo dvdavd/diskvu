@@ -90,3 +90,29 @@ bool isLocalFilesystem(const QStorageInfo& storageInfo)
                              storageInfo.device(),
                              storageInfo.rootPath());
 }
+
+bool isLocalFilesystemPath(QStringView path)
+{
+#ifdef Q_OS_WIN
+    const QString cleanedPath = path.trimmed().toString();
+    if (cleanedPath.isEmpty()) {
+        return true;
+    }
+
+    if ((cleanedPath.startsWith(QLatin1String("//")) || cleanedPath.startsWith(QLatin1String("\\\\"))) &&
+        !cleanedPath.startsWith(QLatin1String("//?/")) && !cleanedPath.startsWith(QLatin1String("//./")) &&
+        !cleanedPath.startsWith(QLatin1String("\\\\?\\")) && !cleanedPath.startsWith(QLatin1String("\\\\.\\"))) {
+        return false;
+    }
+
+    if (cleanedPath.size() >= 2 && cleanedPath.at(1) == QLatin1Char(':')) {
+        const QString driveRoot = cleanedPath.left(2) + QLatin1String("\\");
+        const UINT type = GetDriveTypeW(reinterpret_cast<const wchar_t*>(driveRoot.utf16()));
+        return type != DRIVE_REMOTE;
+    }
+
+    return true;
+#else
+    return isLocalFilesystem(QStorageInfo(path.toString()));
+#endif
+}

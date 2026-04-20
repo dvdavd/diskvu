@@ -661,6 +661,7 @@ TreemapSettings TreemapSettings::load(QSettings& store)
 
     settings.showThumbnails = store.value("treemap/showThumbnails", settings.showThumbnails).toBool();
     settings.showVideoThumbnails = store.value("treemap/showVideoThumbnails", settings.showVideoThumbnails).toBool();
+    settings.showFileFlags = store.value("treemap/showFileFlags", settings.showFileFlags).toBool();
     settings.thumbnailResolution = store.value("treemap/thumbnailResolution", settings.thumbnailResolution).toInt();
     settings.thumbnailMinTileSize = store.value("treemap/thumbnailMinTileSize", settings.thumbnailMinTileSize).toInt();
     settings.thumbnailMemoryLimitMB = store.value("treemap/thumbnailMemoryLimitMB", settings.thumbnailMemoryLimitMB).toInt();
@@ -872,6 +873,7 @@ void TreemapSettings::save(QSettings& store) const
     store.setValue("treemap/hideNonLocalFreeSpace", snapshot.hideNonLocalFreeSpace);
     store.setValue("treemap/showThumbnails", snapshot.showThumbnails);
     store.setValue("treemap/showVideoThumbnails", snapshot.showVideoThumbnails);
+    store.setValue("treemap/showFileFlags", snapshot.showFileFlags);
     store.setValue("treemap/thumbnailResolution", snapshot.thumbnailResolution);
     store.setValue("treemap/thumbnailMinTileSize", snapshot.thumbnailMinTileSize);
     store.setValue("treemap/thumbnailMemoryLimitMB", snapshot.thumbnailMemoryLimitMB);

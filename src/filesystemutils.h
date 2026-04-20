@@ -8,3 +8,4 @@
 
 bool isLocalFilesystem(QStringView fileSystemType, const QByteArray& device, QStringView rootPath);
 bool isLocalFilesystem(const QStorageInfo& storageInfo);
+bool isLocalFilesystemPath(QStringView path);

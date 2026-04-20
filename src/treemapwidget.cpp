@@ -5478,7 +5478,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
         }
 
         // Hard link badge: small chain icon in top-right corner for files with nlink > 1.
-        if (node->hasHardLinks() && ri.width() >= 16.0 && ri.height() >= 16.0
+        if (m_settings.showFileFlags && node->hasHardLinks() && ri.width() >= 16.0 && ri.height() >= 16.0
                 && layer != SceneRenderLayer::StaticOnly) {
             constexpr qreal kBadgeSize = 13.0;
             const QColor textColor = contrastingTextColor(fillColor);

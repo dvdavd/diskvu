@@ -25,7 +25,7 @@ ScanResult Scanner::scan(const QString& path, const TreemapSettings& settings,
 
     const QString normalizedPath = QDir::cleanPath(path);
     const QStorageInfo scanStorageInfo(normalizedPath);
-    const bool scanIsLocal = isLocalFilesystem(scanStorageInfo);
+    const bool scanIsLocal = isLocalFilesystemPath(normalizedPath);
     if (scanIsLocal) {
         result.hardLinkTracker = std::make_shared<HardLinkTracker>();
     }
@@ -210,7 +210,7 @@ ScanResult Scanner::scan(const QString& path, const TreemapSettings& settings,
                 dummy.rootPath = task.childPath;
                 dummy.hardLinkTracker = hardLinkTracker;
 
-                bool taskThrottled = !throttler->isLocal(task.rootDev, task.childPath);
+                bool taskThrottled = !isLocalFilesystemPath(task.childPath);
 
                 Scanner::scanNode(r.workerRoot, task.childPath, dummy, settings, allExcludedPaths, {},
                                   nullptr, *taskArena, workerActivityCallback, errorCallback,

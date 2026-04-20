@@ -543,6 +543,7 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     m_simpleTooltips = new QCheckBox(tr("Use smaller, simpler tooltips in the treemap"));
     m_showThumbnails = new QCheckBox(tr("Show previews for image files"));
     m_showVideoThumbnails = new QCheckBox(tr("Show previews for video files"));
+    m_showFileFlags = new QCheckBox(tr("Show special file indicators (e.g. hard links)"));
     m_thumbnailFitMode = new QComboBox(this);
     m_thumbnailFitMode->addItem(tr("Fill (crop to tile, keep aspect ratio)"), TreemapSettings::ThumbnailFill);
     m_thumbnailFitMode->addItem(tr("Fit (letterbox, keep aspect ratio)"), TreemapSettings::ThumbnailFit);
@@ -670,6 +671,7 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
                        createFieldWithDescription(tileAspectBiasRow,
                            tr("Biases tiles toward horizontal (\xe2\x86\x90) or vertical (\xe2\x86\x92). "
                            "0 produces the squarest tiles for the available area.")));
+    chromeForm->addRow(m_showFileFlags);
     appearanceControlsLayout->addWidget(createSectionGroup(
         tr("Tile appearance"),
         tr("Set tile shape, borders, spacing, and fonts."),
@@ -1059,6 +1061,7 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     connect(m_simpleTooltips, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
     connect(m_showThumbnails, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
     connect(m_showVideoThumbnails, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
+    connect(m_showFileFlags, &QCheckBox::toggled, this, &SettingsDialog::refreshPreview);
     connect(m_thumbnailFitMode, &QComboBox::currentIndexChanged, this, &SettingsDialog::refreshPreview);
     connect(m_cameraMaxScale, &QSlider::valueChanged, this, [this](int value) {
         m_cameraMaxScaleValue->setText(QString::number(value));
@@ -1597,6 +1600,7 @@ void SettingsDialog::applySettingsToFields(const TreemapSettings& settings)
     m_simpleTooltips->setChecked(settings.simpleTooltips);
     m_showThumbnails->setChecked(settings.showThumbnails);
     m_showVideoThumbnails->setChecked(settings.showVideoThumbnails);
+    m_showFileFlags->setChecked(settings.showFileFlags);
     m_thumbnailFitMode->setCurrentIndex(m_thumbnailFitMode->findData(settings.thumbnailFitMode));
     m_thumbnailResolution->setValue(settings.thumbnailResolution);
     m_thumbnailMinTileSize->setValue(settings.thumbnailMinTileSize);
@@ -1696,6 +1700,7 @@ TreemapSettings SettingsDialog::settings() const
     currentSettings.simpleTooltips = m_simpleTooltips->isChecked();
     currentSettings.showThumbnails = m_showThumbnails->isChecked();
     currentSettings.showVideoThumbnails = m_showVideoThumbnails->isChecked();
+    currentSettings.showFileFlags = m_showFileFlags->isChecked();
     currentSettings.thumbnailFitMode = m_thumbnailFitMode->currentData().toInt();
     currentSettings.thumbnailResolution = m_thumbnailResolution->value();
     currentSettings.thumbnailMinTileSize = m_thumbnailMinTileSize->value();
@@ -1785,7 +1790,8 @@ void SettingsDialog::buildPreviewTree()
     FileNode* logs = createPreviewNode(m_previewArena, "logs", 110, true, 0, system);
     FileNode* services = createPreviewNode(m_previewArena, "services", 90, true, 0, system);
     FileNode* cacheRoot = createPreviewNode(m_previewArena, "cache", 65, true, 0, system);
-    createPreviewNode(m_previewArena, "temp.db", 35, false, qRgb(186, 170, 222), system);
+    auto* tempDb = createPreviewNode(m_previewArena, "temp.db", 35, false, qRgb(186, 170, 222), system);
+    tempDb->setHasHardLinks(true);
     createPreviewNode(m_previewArena, "snapshot.blobx", 22, false, qRgb(128, 128, 128), system);
 
     createPreviewNode(m_previewArena, "widgets", 62, true, 0, apps);

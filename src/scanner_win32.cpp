@@ -129,7 +129,7 @@ void Scanner::partitionNode(Scanner::PartitionTask partition,
     const std::wstring win32Dir = toWin32Path(partition.path);
     const std::wstring searchPat = toSearchPattern(win32Dir);
 
-    bool partitionThrottled = !throttler.isLocal(partition.rootDev, partition.path);
+    bool partitionThrottled = !isLocalFilesystemPath(partition.path);
     ThrottleGuard partitionThrottleGuard(&throttler.networkSemaphore, partitionThrottled);
 
     WIN32_FIND_DATAW fd;
@@ -273,18 +273,11 @@ qint64 Scanner::scanNode(FileNode* node, const QString& path, const ScanResult& 
         return 0;
     }
 
-    // Determine current volume for throttling check.
-    unsigned long long currentDev = rootDev;
-    bool needsThrottle = false;
-    if (throttler && !alreadyThrottled) {
-        currentDev = static_cast<unsigned long long>(getVolumeSerial(toWin32Path(path)));
-        if (!throttler->isLocal(currentDev, path)) {
-            needsThrottle = true;
-        }
-    }
-
-    ThrottleGuard throttleGuard(throttler ? &throttler->networkSemaphore : nullptr, needsThrottle);
-    bool nextAlreadyThrottled = alreadyThrottled || needsThrottle;
+    // Locality is classified at the scan root / task boundary.
+    // Recursive descent inherits that throttling state instead of
+    // re-checking every directory.
+    ThrottleGuard throttleGuard(throttler ? &throttler->networkSemaphore : nullptr, false);
+    const bool nextAlreadyThrottled = alreadyThrottled;
 
     if (activityCallback) {
         activityCallback(path, scanState.root ? scanState.root->size : 0);
@@ -432,4 +425,3 @@ qint64 Scanner::scanNode(FileNode* node, const QString& path, const ScanResult& 
     node->subtreeFileCount = totalFileCount;
     return totalSize;
 }
-
