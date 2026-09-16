@@ -3,6 +3,8 @@
 #include "treemap_drawing.h"
 #include "filenode.h"
 
+#include <algorithm>
+
 #include <QApplication>
 #include <QImage>
 #include <QtTest/QtTest>
@@ -339,6 +341,60 @@ private slots:
             QVERIFY(r.width()  >= 0.0);
             QVERIFY(r.height() >= 0.0);
         }
+    }
+
+    void squarifiedLayout_largeChildIsNearSquare()
+    {
+        // 50/25/25 in a 2:1 rect: squarify gives a 1x1 tile for the large
+        // child and two 1x0.5 tiles (aspect 2) for the rest. Laying rows
+        // along the long side instead produced a 2.0x0.25 sliver (aspect 8).
+        std::vector<FileNode> nodes(3);
+        nodes[0].size = 50;
+        nodes[1].size = 25;
+        nodes[2].size = 25;
+        std::vector<FileNode*> ptrs{&nodes[0], &nodes[1], &nodes[2]};
+        std::vector<std::pair<FileNode*, QRectF>> result;
+        squarifiedLayout(ptrs, QRectF(0, 0, 200, 100), 100, result);
+
+        QCOMPARE(result.size(), size_t(3));
+        QVERIFY(qAbs(result[0].second.width()  - 100.0) < 1e-6);
+        QVERIFY(qAbs(result[0].second.height() - 100.0) < 1e-6);
+        for (size_t i = 1; i < result.size(); ++i) {
+            const QRectF& r = result[i].second;
+            const qreal ar = std::max(r.width() / r.height(), r.height() / r.width());
+            QVERIFY2(ar < 2.0 + 1e-6,
+                     qPrintable(QStringLiteral("tile %1x%2 too elongated")
+                                    .arg(r.width()).arg(r.height())));
+        }
+    }
+
+    void squarifiedLayout_meanAspectRatioBounded()
+    {
+        // Descending-sorted heavy-tailed sizes in a 16:10 rect. The mean
+        // worst-aspect over the largest tiles (those the user actually sees)
+        // must stay modest; a long-side strip layout blows this up.
+        const std::vector<qint64> sizes{
+            5000, 3000, 2000, 1200, 800, 500, 300, 200, 120, 80, 50, 30, 20, 10, 5};
+        std::vector<FileNode> nodes(sizes.size());
+        std::vector<FileNode*> ptrs;
+        qint64 total = 0;
+        for (size_t i = 0; i < sizes.size(); ++i) {
+            nodes[i].size = sizes[i];
+            total += sizes[i];
+            ptrs.push_back(&nodes[i]);
+        }
+        std::vector<std::pair<FileNode*, QRectF>> result;
+        squarifiedLayout(ptrs, QRectF(0, 0, 1600, 1000), total, result);
+        QCOMPARE(result.size(), sizes.size());
+
+        qreal worstSum = 0.0;
+        for (size_t i = 0; i < 8; ++i) {
+            const QRectF& r = result[i].second;
+            worstSum += std::max(r.width() / r.height(), r.height() / r.width());
+        }
+        const qreal meanWorst = worstSum / 8.0;
+        QVERIFY2(meanWorst < 1.8,
+                 qPrintable(QStringLiteral("mean worst aspect %1").arg(meanWorst)));
     }
 
     void squarifiedLayout_zeroTotalSizeReturnsEmpty()

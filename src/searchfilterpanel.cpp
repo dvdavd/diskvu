@@ -59,11 +59,11 @@ QComboBox* makeSizeUnitCombo(QWidget* parent)
 {
     auto* c = new QComboBox(parent);
     c->addItem(QStringLiteral("B"));
-    c->addItem(QStringLiteral("KB"));
-    c->addItem(QStringLiteral("MB"));
-    c->addItem(QStringLiteral("GB"));
-    c->addItem(QStringLiteral("TB"));
-    c->setCurrentIndex(2); // default to MB
+    c->addItem(QStringLiteral("KiB"));
+    c->addItem(QStringLiteral("MiB"));
+    c->addItem(QStringLiteral("GiB"));
+    c->addItem(QStringLiteral("TiB"));
+    c->setCurrentIndex(2); // default to MiB
     c->setMaximumWidth(72);
     return c;
 }
@@ -484,8 +484,8 @@ void SearchFilterPanel::clearAll()
         m_nameEdit->clear();
         m_sizeMinSpin->setValue(0);
         m_sizeMaxSpin->setValue(0);
-        m_sizeMinUnit->setCurrentIndex(2); // MB
-        m_sizeMaxUnit->setCurrentIndex(2); // MB
+        m_sizeMinUnit->setCurrentIndex(2); // MiB
+        m_sizeMaxUnit->setCurrentIndex(2); // MiB
         m_dateFromCheck->setChecked(false);
         m_dateFromEdit->setEnabled(false);
         m_dateToCheck->setChecked(false);

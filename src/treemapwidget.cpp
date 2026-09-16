@@ -252,7 +252,7 @@ public:
         if (m_skipNetworkPaths) {
             if (!isLocalFilesystem(QStorageInfo(m_path))) {
                 QMetaObject::invokeMethod(m_widget, [widget = m_widget, path = m_path]() {
-                    widget->m_pendingThumbnails.remove(path);
+                    if (widget) widget->m_pendingThumbnails.remove(path);
                 }, Qt::QueuedConnection);
                 return;
             }
@@ -263,7 +263,7 @@ public:
             const qint64 limit = (qint64)m_maxFileSizeMB * 1024 * 1024;
             if (QFileInfo(m_path).size() > limit) {
                 QMetaObject::invokeMethod(m_widget, [widget = m_widget, path = m_path]() {
-                    widget->m_pendingThumbnails.remove(path);
+                    if (widget) widget->m_pendingThumbnails.remove(path);
                 }, Qt::QueuedConnection);
                 return;
             }
@@ -305,6 +305,7 @@ public:
             }
 
             QMetaObject::invokeMethod(m_widget, [widget = m_widget, path = m_path, img = std::move(image)]() mutable {
+                if (!widget) return;
                 QPixmap p = QPixmap::fromImage(img);
                 const qsizetype bytes = (qsizetype)p.width() * p.height() * p.depth() / 8;
                 widget->m_thumbnailStore.insert(path, p);
@@ -317,6 +318,7 @@ public:
             }, Qt::QueuedConnection);
         } else {
             QMetaObject::invokeMethod(m_widget, [widget = m_widget, path = m_path]() {
+                if (!widget) return;
                 widget->m_pendingThumbnails.remove(path);
                 widget->m_thumbnailFailedPaths.insert(path);
             }, Qt::QueuedConnection);
@@ -325,7 +327,7 @@ public:
 
 private:
     QString m_path;
-    TreemapWidget* m_widget;
+    QPointer<TreemapWidget> m_widget;
     int m_resolution;
     int m_maxFileSizeMB;
     bool m_skipNetworkPaths;
@@ -379,13 +381,13 @@ public:
         reader.setAutoTransform(true);
         const QImage image = reader.read();
         QMetaObject::invokeMethod(m_widget, [widget = m_widget, path = m_path, image]() {
-            widget->applyLoadedImagePreview(path, image);
+            if (widget) widget->applyLoadedImagePreview(path, image);
         }, Qt::QueuedConnection);
     }
 
 private:
     QString m_path;
-    TreemapWidget* m_widget;
+    QPointer<TreemapWidget> m_widget;
 };
 
 constexpr quint8 kSearchSelfMatch = 0x1;
@@ -882,6 +884,10 @@ TreemapWidget::TreemapWidget(QWidget* parent)
 TreemapWidget::~TreemapWidget()
 {
     shutdownAsyncWorkers(true);
+    // Drop queued decode tasks and wait for running ones; they post results back
+    // to this object and must not outlive it.
+    m_thumbnailPool.clear();
+    m_thumbnailPool.waitForDone();
 }
 
 bool TreemapWidget::viewportEvent(QEvent* event)
@@ -2335,7 +2341,7 @@ void TreemapWidget::requestImagePreview(FileNode* node, const QRectF& sourceRect
     }
     if (!m_imagePreviewPath.isEmpty() && (!samePath || m_imagePreviewImage.isNull())) {
         m_imagePreviewLoading = true;
-        QThreadPool::globalInstance()->start(new FullImageTask(m_imagePreviewPath, this));
+        m_thumbnailPool.start(new FullImageTask(m_imagePreviewPath, this));
     } else {
         m_imagePreviewLoading = false;
     }
@@ -5334,7 +5340,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
                     }
                 } else if (!m_pendingThumbnails.contains(path) && !m_thumbnailFailedPaths.contains(path)) {
                     m_pendingThumbnails.insert(path);
-                    QThreadPool::globalInstance()->start(new ThumbnailTask(
+                    m_thumbnailPool.start(new ThumbnailTask(
                         path, this,
                         m_settings.thumbnailResolution,
                         isVideoNode ? 0 : m_settings.thumbnailMaxFileSizeMB,

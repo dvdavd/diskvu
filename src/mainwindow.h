@@ -17,6 +17,7 @@
 #include <QTimer>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -34,6 +35,16 @@ class QToolButton;
 class QListWidget;
 class QTreeWidget;
 class QTreeWidgetItem;
+
+// Shared between MainWindow and background scan callbacks. Scan workers can
+// outlive a cancelled scan (see Scanner::scan), so callbacks must not touch the
+// window directly: they lock the bridge and bail out once ~MainWindow has
+// cleared `owner`. Holding the mutex while `owner` is used guarantees the
+// destructor cannot proceed mid-callback.
+struct ScanCallbackBridge {
+    std::mutex mutex;
+    class MainWindow* owner = nullptr;
+};
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -80,6 +91,8 @@ private slots:
     void onPostProcessFinished();
 
 private:
+    Scanner::ErrorCallback makeScanErrorCallback() const;
+    void maybeQuitAfterClose();
     QString nodePath(FileNode* node) const;
     bool isTreeInteractionBlocked() const;
     bool startPendingScanRequestIfNeeded();
@@ -248,6 +261,7 @@ private:
     TreemapSettings m_settings;
     std::shared_ptr<std::atomic_bool> m_scanCancelToken;
     std::shared_ptr<std::atomic_bool> m_refreshCancelToken;
+    std::shared_ptr<ScanCallbackBridge> m_scanCallbackBridge;
     std::vector<FileNode*> m_freeSpaceNodes;
     FileNode* m_mountPointFreeNode = nullptr; // free-space node injected at current sub-FS mount point
     bool m_showFreeSpaceInOverview = true;

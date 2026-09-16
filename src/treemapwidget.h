@@ -24,6 +24,7 @@
 #include <QRectF>
 #include <QRegularExpression>
 #include <QString>
+#include <QThreadPool>
 #include <QTimer>
 #include <QVariantAnimation>
 #include <QSet>
@@ -542,6 +543,9 @@ private:
     bool m_asyncShutdown = false;
 
 public:
+    // Thumbnail/preview decode tasks run here rather than on the global pool so the
+    // destructor can drain them before the widget goes away.
+    QThreadPool m_thumbnailPool;
     QHash<QString, QPixmap> m_thumbnailStore;
     QHash<QString, qsizetype> m_thumbnailBytes;
     QHash<QString, quint64> m_thumbnailLastAccess;

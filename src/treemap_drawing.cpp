@@ -183,7 +183,11 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
         const double H = rem.height();
         const double L = std::max(W, H);
         const double w = std::min(W, H);
-        const double C = L * S_rem / w;  // shape constant for this row
+        // Shape constant for this row. Rows are laid along the short side w
+        // and consume a slice of the long side L proportional to their share
+        // of S_rem (Bruls et al. squarify), so a tile of size s_j in a row of
+        // sum s has aspect ratio C * s_j / s^2 or its inverse.
+        const double C = w * S_rem / L;
 
         // Greedily extend the row while aspect ratio improves
         const int rowStart = i;
@@ -204,19 +208,11 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
             ++i;
         }
 
-        // Place row as a strip
+        // Place row as a strip along the short side. When the remaining rect
+        // is wider than tall, the row is a vertical column consuming a slice of
+        // the width; otherwise it is a horizontal band consuming a slice of the
+        // height. This is what keeps large children close to square.
         if (W >= H) {
-            const bool lastStrip = (i >= n) || std::abs(S_rem - rowSum) < 1e-9;
-            const double stripH = lastStrip ? H : (H * rowSum / S_rem);
-            double x = rem.x();
-            for (int j = rowStart; j < i; ++j) {
-                const bool lastTile = (j + 1 == i);
-                const double tileW = lastTile ? (rem.x() + W - x) : (W * nodeSize(children[j]) / rowSum);
-                result.emplace_back(children[j], QRectF(x, rem.y(), tileW, stripH));
-                x += tileW;
-            }
-            rem = QRectF(rem.x(), rem.y() + stripH, W, H - stripH);
-        } else {
             const bool lastStrip = (i >= n) || std::abs(S_rem - rowSum) < 1e-9;
             const double stripW = lastStrip ? W : (W * rowSum / S_rem);
             double y = rem.y();
@@ -227,6 +223,17 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
                 y += tileH;
             }
             rem = QRectF(rem.x() + stripW, rem.y(), W - stripW, H);
+        } else {
+            const bool lastStrip = (i >= n) || std::abs(S_rem - rowSum) < 1e-9;
+            const double stripH = lastStrip ? H : (H * rowSum / S_rem);
+            double x = rem.x();
+            for (int j = rowStart; j < i; ++j) {
+                const bool lastTile = (j + 1 == i);
+                const double tileW = lastTile ? (rem.x() + W - x) : (W * nodeSize(children[j]) / rowSum);
+                result.emplace_back(children[j], QRectF(x, rem.y(), tileW, stripH));
+                x += tileW;
+            }
+            rem = QRectF(rem.x(), rem.y() + stripH, W, H - stripH);
         }
         S_rem -= rowSum;
     }

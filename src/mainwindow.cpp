@@ -1374,10 +1374,41 @@ void MainWindow::setupBackend()
     connect(m_watchController, &FilesystemWatchController::refreshRequested,
             this, &MainWindow::launchIncrementalRefresh);
     syncFilesystemWatchControllerState();
+
+    m_scanCallbackBridge = std::make_shared<ScanCallbackBridge>();
+    m_scanCallbackBridge->owner = this;
+}
+
+Scanner::ErrorCallback MainWindow::makeScanErrorCallback() const
+{
+    const std::shared_ptr<ScanCallbackBridge> bridge = m_scanCallbackBridge;
+    return [bridge](const ScanWarning& warning) {
+        std::lock_guard<std::mutex> lock(bridge->mutex);
+        MainWindow* self = bridge->owner;
+        if (!self) return;
+        bool shouldQueue = false;
+        {
+            QMutexLocker locker(&self->m_permissionErrorMutex);
+            self->m_pendingPermissionErrors.append(warning);
+            ++self->m_scanPermissionPostedCount;
+            if (!self->m_permissionErrorQueued) {
+                self->m_permissionErrorQueued = true;
+                shouldQueue = true;
+            }
+        }
+        if (shouldQueue) {
+            QCoreApplication::postEvent(self, new QEvent(kProcessQueuedPermissionErrorsEvent));
+        }
+    };
 }
 
 MainWindow::~MainWindow()
 {
+    if (m_scanCallbackBridge) {
+        // Detach any still-running scan workers before members are destroyed.
+        std::lock_guard<std::mutex> lock(m_scanCallbackBridge->mutex);
+        m_scanCallbackBridge->owner = nullptr;
+    }
     if (qApp) {
         qApp->removeEventFilter(this);
     }
@@ -1850,24 +1881,47 @@ void MainWindow::onRefreshActionTriggered()
 
 void MainWindow::cancelRefreshOperation()
 {
-    if (m_scanInProgress) {
+    // A full scan and an incremental refresh can be in flight at the same time,
+    // so cancel each one that is running instead of stopping at the first.
+    const bool scanRunning = m_scanInProgress;
+    if (scanRunning) {
         cancelScan();
-        return;
     }
 
+    bool refreshCancelled = false;
     if (m_incrementalRefreshInProgress) {
         m_incrementalRefreshCancelled = true;
         if (m_refreshCancelToken) {
             m_refreshCancelToken->store(true, std::memory_order_relaxed);
         }
-        statusBar()->showMessage(tr("Cancelling refresh..."));
-        return;
+        refreshCancelled = true;
     }
 
     if (m_postProcessInProgress) {
         m_postProcessStale = true;
+        refreshCancelled = true;
+    }
+
+    // cancelScan() sets its own status message; only override it when the
+    // scan was not the thing being cancelled.
+    if (refreshCancelled && !scanRunning) {
         statusBar()->showMessage(tr("Cancelling refresh..."));
     }
+}
+
+void MainWindow::maybeQuitAfterClose()
+{
+    if (!m_closeRequested) {
+        return;
+    }
+    // The scan, the incremental refresh and its post-process can all be in
+    // flight at once, and each finished handler calls this on its own. Quit
+    // only once every one of them has finished, otherwise the window is
+    // destroyed under whichever worker is still running.
+    if (m_scanInProgress || m_incrementalRefreshInProgress || m_postProcessInProgress) {
+        return;
+    }
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
 }
 
 void MainWindow::openPathFromToolbar()
@@ -2037,13 +2091,16 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
     const std::shared_ptr<std::atomic_bool> cancelToken = m_scanCancelToken;
     m_scanPreviewSlotOpen = std::make_shared<std::atomic_bool>(true);
     const std::shared_ptr<std::atomic_bool> previewSlotOpen = m_scanPreviewSlotOpen;
-    const QPointer<MainWindow> self = this;
+    const std::shared_ptr<ScanCallbackBridge> bridge = m_scanCallbackBridge;
     const int scanPreviewMode = m_settings.scanPreviewMode;
     const TreemapSettings settings = m_settings;
-    QFuture<ScanResult> future = QtConcurrent::run([self, scanPreviewMode, settings, normalizedDir, backgroundRefresh, cancelToken, previewSlotOpen]() {
+    const Scanner::ErrorCallback errorCallback = makeScanErrorCallback();
+    QFuture<ScanResult> future = QtConcurrent::run([bridge, scanPreviewMode, settings, normalizedDir, backgroundRefresh, cancelToken, previewSlotOpen, errorCallback]() {
         const bool wantPreview = !backgroundRefresh && scanPreviewMode != TreemapSettings::ScanPreviewNone;
         const Scanner::ProgressCallback progressCallback = wantPreview
-            ? Scanner::ProgressCallback([self](ScanResult snapshot) {
+            ? Scanner::ProgressCallback([bridge](ScanResult snapshot) {
+            std::lock_guard<std::mutex> lock(bridge->mutex);
+            MainWindow* self = bridge->owner;
             if (!self) return;
             bool shouldQueue = false;
             {
@@ -2056,7 +2113,7 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
                 }
             }
             if (shouldQueue) {
-                QCoreApplication::postEvent(self.data(), new QEvent(kProcessQueuedScanProgressEvent));
+                QCoreApplication::postEvent(self, new QEvent(kProcessQueuedScanProgressEvent));
             }
         })
             : Scanner::ProgressCallback{};
@@ -2066,7 +2123,9 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
             })
             : Scanner::ProgressReadyCallback{};
         const Scanner::ActivityCallback activityCallback = !backgroundRefresh
-            ? Scanner::ActivityCallback([self](const QString& currentPath, qint64 totalBytesSeen) {
+            ? Scanner::ActivityCallback([bridge](const QString& currentPath, qint64 totalBytesSeen) {
+            std::lock_guard<std::mutex> lock(bridge->mutex);
+            MainWindow* self = bridge->owner;
             if (!self) return;
             bool shouldQueue = false;
             {
@@ -2079,26 +2138,10 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
                 }
             }
             if (shouldQueue) {
-                QCoreApplication::postEvent(self.data(), new QEvent(kProcessQueuedScanActivityEvent));
+                QCoreApplication::postEvent(self, new QEvent(kProcessQueuedScanActivityEvent));
             }
         })
             : Scanner::ActivityCallback{};
-        const Scanner::ErrorCallback errorCallback = [self](const ScanWarning& warning) {
-            if (!self) return;
-            bool shouldQueue = false;
-            {
-                QMutexLocker locker(&self->m_permissionErrorMutex);
-                self->m_pendingPermissionErrors.append(warning);
-                ++self->m_scanPermissionPostedCount;
-                if (!self->m_permissionErrorQueued) {
-                    self->m_permissionErrorQueued = true;
-                    shouldQueue = true;
-                }
-            }
-            if (shouldQueue) {
-                QCoreApplication::postEvent(self.data(), new QEvent(kProcessQueuedPermissionErrorsEvent));
-            }
-        };
         if (previewSlotOpen) {
             previewSlotOpen->store(false, std::memory_order_relaxed);
         }
@@ -2710,7 +2753,7 @@ void MainWindow::onScanFinished()
         statusBar()->showMessage(hasPendingScanRequest ? tr("Starting next scan...") : tr("Scan cancelled"));
         m_scanCancelToken.reset();
         if (m_closeRequested) {
-            QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+            maybeQuitAfterClose();
             return;
         }
         if (hasPendingScanRequest) {
@@ -2751,7 +2794,7 @@ void MainWindow::onScanFinished()
         m_treemapWidget->setScanInProgress(false);
         statusBar()->showMessage(backgroundRefresh ? tr("Refresh failed") : tr("Scan failed"));
         if (m_closeRequested) {
-            QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+            maybeQuitAfterClose();
         }
         return;
     }
@@ -2794,7 +2837,7 @@ void MainWindow::onScanFinished()
         statusBar()->clearMessage();
     }
     if (m_closeRequested) {
-        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        maybeQuitAfterClose();
     }
 }
 
@@ -2863,11 +2906,10 @@ void MainWindow::closeEvent(QCloseEvent* event)
     if (m_watchController) {
         m_watchController->stop();
     }
-    if (m_scanInProgress) {
-        cancelScan();
-    } else if (m_incrementalRefreshInProgress || m_postProcessInProgress) {
-        cancelRefreshOperation();
-    }
+    // Cancels every in-flight operation. A full scan and an incremental
+    // refresh can be running at the same time, and leaving either one running
+    // past the window's lifetime is what makes the quit unclean.
+    cancelRefreshOperation();
     hide();
     event->ignore();
 }
@@ -3195,23 +3237,8 @@ void MainWindow::launchIncrementalRefresh(const QString& refreshPath)
     statusBar()->showMessage(tr("Refreshing %1...").arg(QDir::toNativeSeparators(refreshPath)));
     const TreemapSettings settings = m_settings;
     const std::shared_ptr<std::atomic_bool> cancelToken = m_refreshCancelToken;
-    const QPointer<MainWindow> self = this;
-    QFuture<ScanResult> future = QtConcurrent::run([self, refreshPath, settings, cancelToken]() {
-        const Scanner::ErrorCallback errorCallback = [self](const ScanWarning& warning) {
-            if (!self) return;
-            bool shouldQueue = false;
-            {
-                QMutexLocker locker(&self->m_permissionErrorMutex);
-                self->m_pendingPermissionErrors.append(warning);
-                if (!self->m_permissionErrorQueued) {
-                    self->m_permissionErrorQueued = true;
-                    shouldQueue = true;
-                }
-            }
-            if (shouldQueue) {
-                QCoreApplication::postEvent(self.data(), new QEvent(kProcessQueuedPermissionErrorsEvent));
-            }
-        };
+    const Scanner::ErrorCallback errorCallback = makeScanErrorCallback();
+    QFuture<ScanResult> future = QtConcurrent::run([refreshPath, settings, cancelToken, errorCallback]() {
         return Scanner::scan(refreshPath, settings, {}, {}, {}, errorCallback, cancelToken);
     });
     m_refreshWatcher->setFuture(future);
@@ -3251,7 +3278,7 @@ void MainWindow::onIncrementalRefreshFinished()
                     return;
                 }
                 if (m_closeRequested) {
-                    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+                    maybeQuitAfterClose();
                 }
                 return;
             }
@@ -3264,7 +3291,7 @@ void MainWindow::onIncrementalRefreshFinished()
 
         if (m_closeRequested) {
             setRefreshBusy(false);
-            QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+            maybeQuitAfterClose();
             return;
         }
 
@@ -3296,7 +3323,7 @@ void MainWindow::onIncrementalRefreshFinished()
     }
 
     if (m_closeRequested) {
-        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        maybeQuitAfterClose();
         return;
     }
 }
@@ -3321,7 +3348,7 @@ void MainWindow::onPostProcessFinished()
     }
 
     if (m_closeRequested) {
-        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        maybeQuitAfterClose();
         return;
     }
 }

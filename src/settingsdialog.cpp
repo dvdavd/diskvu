@@ -572,9 +572,9 @@ SettingsDialog::SettingsDialog(const TreemapSettings& currentSettings, QWidget* 
     m_thumbnailResolution->setSuffix(tr(" px"));
     m_thumbnailMinTileSize = createSpinBox(32, 256, 8);
     m_thumbnailMemoryLimitMB = createSpinBox(64, 4096, 64);
-    m_thumbnailMemoryLimitMB->setSuffix(tr(" MB"));
+    m_thumbnailMemoryLimitMB->setSuffix(tr(" MiB"));
     m_thumbnailMaxFileSizeMB = createSpinBox(0, 500, 10);
-    m_thumbnailMaxFileSizeMB->setSuffix(tr(" MB"));
+    m_thumbnailMaxFileSizeMB->setSuffix(tr(" MiB"));
     m_thumbnailMaxFileSizeMB->setSpecialValueText(tr("Unlimited"));
     m_thumbnailSkipNetworkPaths = new QCheckBox(tr("Skip files on network filesystems"));
     m_cameraMaxScale = new QSlider(Qt::Horizontal, this);

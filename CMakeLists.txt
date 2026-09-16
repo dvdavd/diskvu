@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(diskvu VERSION 0.9.26 LANGUAGES CXX)
+project(diskvu VERSION 0.9.27 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

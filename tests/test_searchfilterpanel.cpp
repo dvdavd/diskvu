@@ -78,7 +78,7 @@ private slots:
         minSpin->setValue(1.0);
         minUnit->setCurrentIndex(3); // GB
         maxSpin->setValue(100.0);
-        maxUnit->setCurrentIndex(2); // MB
+        maxUnit->setCurrentIndex(2); // MiB
 
         FilterParams p = panel.currentParams();
         QCOMPARE(p.sizeMin, 100LL * 1024 * 1024);
