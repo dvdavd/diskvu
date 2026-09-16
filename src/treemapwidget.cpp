@@ -28,6 +28,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPropertyAnimation>
+#include <unordered_map>
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
@@ -314,7 +315,7 @@ public:
                 widget->m_thumbnailLastAccess.insert(path, ++widget->m_thumbnailAccessSeq);
                 widget->m_pendingThumbnails.remove(path);
                 widget->m_thumbnailReadyTimes.insert(path, QDateTime::currentMSecsSinceEpoch());
-                widget->viewport()->update();
+                widget->requestSceneRepaint();
             }, Qt::QueuedConnection);
         } else {
             QMetaObject::invokeMethod(m_widget, [widget = m_widget, path = m_path]() {
@@ -464,6 +465,40 @@ bool shouldUseLightBorder(const QColor& baseColor, int borderStyle)
     return luminance < 0.45;
 }
 
+// Border base colour for a tile: the fill pulled towards a saturated light or
+// dark target. Depends only on the fill colour and two settings, so it is
+// cached; the HSL round trip was otherwise paid per tile per frame.
+// Paint-thread only (same as contrastingTextColor's cache).
+QColor cachedVibrantBorderBase(const QColor& base, int borderStyle, qreal borderIntensity)
+{
+    struct Key {
+        QRgb rgba; int style; int intensityPermille;
+        bool operator==(const Key& o) const { return rgba == o.rgba && style == o.style && intensityPermille == o.intensityPermille; }
+    };
+    struct KeyHash {
+        size_t operator()(const Key& k) const noexcept {
+            return std::hash<quint64>()((quint64(k.rgba) << 32) ^ (quint64(k.style) << 16) ^ quint64(k.intensityPermille));
+        }
+    };
+    static std::unordered_map<Key, QRgb, KeyHash> cache;
+    const Key key{base.rgba(), borderStyle, static_cast<int>(std::lround(borderIntensity * 1000.0))};
+    auto it = cache.find(key);
+    if (it != cache.end()) {
+        return QColor::fromRgba(it->second);
+    }
+    const bool useLightBorder = shouldUseLightBorder(base, borderStyle);
+    float h, sat, l, a;
+    base.getHslF(&h, &sat, &l, &a);
+    QColor vibrantTarget;
+    vibrantTarget.setHslF(h, std::clamp(sat * 1.25f, 0.0f, 1.0f), useLightBorder ? 0.92f : 0.10f, a);
+    const QColor result = blendColors(base, vibrantTarget, borderIntensity);
+    if (cache.size() > 65536) {
+        cache.clear();
+    }
+    cache.emplace(key, result.rgba());
+    return result;
+}
+
 QColor lerpColor(const QColor& from, const QColor& to, qreal t)
 {
     const qreal clamped = std::clamp(t, 0.0, 1.0);
@@ -556,6 +591,7 @@ QString treemapScrollBarStyleSheet(const QPalette& palette, qreal expandProgress
 TreemapWidget::TreemapWidget(QWidget* parent)
     : QAbstractScrollArea(parent)
 {
+    m_revealThresholds = revealThresholds(m_settings);
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -715,13 +751,13 @@ TreemapWidget::TreemapWidget(QWidget* parent)
     m_hoverAnimation.setEasingCurve(QEasingCurve::OutCubic);
     connect(&m_hoverAnimation, &QVariantAnimation::valueChanged, this, [this]() {
         m_hoverBlend = m_hoverAnimation.currentValue().toReal();
-        viewport()->update();
+        requestSceneRepaint();
     });
     connect(&m_hoverAnimation, &QVariantAnimation::finished, this, [this]() {
         m_hoverBlend = 1.0;
         m_previousHovered = nullptr;
         m_previousHoveredRect = QRectF();
-        viewport()->update();
+        requestSceneRepaint();
     });
 
     m_pressHoldTimer.setSingleShot(true);
@@ -749,7 +785,15 @@ TreemapWidget::TreemapWidget(QWidget* parent)
     m_zoomAnimation.setEndValue(1.0);
     m_zoomAnimation.setEasingCurve(QEasingCurve::InOutCubic);
     connect(&m_zoomAnimation, &QVariantAnimation::valueChanged, this, [this]() {
-        refreshHoverUnderPointer();
+        // Deferred zoom-in destination render: one layer per tick, so each tick
+        // stays within a frame period and the first frames go out immediately.
+        if (m_deferredLiveStages > 0 && m_zoomAnimation.currentTime() > 0) {
+            if (renderDeferredLiveStage()) {
+                m_nextFrame = composeLiveFrames();
+            }
+        }
+        // Frames are pre-rendered pixmaps here, so hover cannot show until the
+        // finished handler refreshes it.
         viewport()->update();
     });
     connect(&m_zoomAnimation, &QVariantAnimation::finished, this, [this]() {
@@ -771,7 +815,7 @@ TreemapWidget::TreemapWidget(QWidget* parent)
     connect(&m_layoutAnimation, &QVariantAnimation::finished, this, [this]() {
         m_layoutPreviousFrame = QPixmap();
         m_layoutNextFrame = QPixmap();
-        viewport()->update();
+        requestSceneRepaint();
     });
 
     m_cameraAnimation.setDuration(m_settings.cameraDurationMs);
@@ -792,14 +836,23 @@ TreemapWidget::TreemapWidget(QWidget* parent)
                 m_cameraStartOrigin.y() + ((m_cameraTargetOrigin.y() - m_cameraStartOrigin.y()) * t));
             m_cameraOrigin = clampCameraOrigin(interpolatedOrigin, m_cameraScale);
         }
+        if (m_cameraNextPendingStages > 0 && !m_cameraPreviousFrame.isNull()
+                && m_cameraAnimation.currentTime() > 0) {
+            renderCameraNextFrameStage();
+        }
         syncSemanticDepthToScale();
         syncScrollBars();
-        refreshHoverUnderPointer();
+        // With the stretch/blend frames hover cannot show until the animation
+        // finishes; the live render path still reflects it every tick.
+        if (!(m_settings.fastWheelZoom && !m_cameraPreviousFrame.isNull())) {
+            refreshHoverUnderPointer();
+        }
         viewport()->update();
     });
     connect(&m_cameraAnimation, &QVariantAnimation::finished, this, [this]() {
         m_cameraPreviousFrame = QPixmap();
         m_cameraNextFrame = QPixmap();
+        m_cameraNextPendingStages = 0;
         m_continuousZoomSettleFramesRemaining = 2;
         m_cameraScale = m_cameraTargetScale;
         if (m_cameraUseFocusAnchor) {
@@ -837,7 +890,7 @@ TreemapWidget::TreemapWidget(QWidget* parent)
         }
         syncScrollBars();
         refreshHoverUnderPointer();
-        viewport()->update();
+        requestSceneRepaint();
     });
 
     m_imagePreviewAnimation.setDuration(220);
@@ -846,13 +899,13 @@ TreemapWidget::TreemapWidget(QWidget* parent)
     m_imagePreviewAnimation.setEasingCurve(QEasingCurve::InOutCubic);
     connect(&m_imagePreviewAnimation, &QVariantAnimation::valueChanged, this, [this]() {
         m_imagePreviewProgress = std::clamp(m_imagePreviewAnimation.currentValue().toReal(), 0.0, 1.0);
-        viewport()->update();
+        requestSceneRepaint();
     });
     connect(&m_imagePreviewAnimation, &QVariantAnimation::finished, this, [this]() {
         if (!m_imagePreviewOpening && m_imagePreviewProgress <= 0.001) {
             clearImagePreview();
         }
-        viewport()->update();
+        requestSceneRepaint();
     });
 
     m_searchCancelToken = std::make_shared<std::atomic<bool>>(false);
@@ -873,11 +926,11 @@ TreemapWidget::TreemapWidget(QWidget* parent)
         for (auto& anim : m_launchAnimations) {
             anim.progress = progress;
         }
-        viewport()->update();
+        requestSceneRepaint();
     });
     connect(&m_launchProgressAnimation, &QVariantAnimation::finished, this, [this]() {
         m_launchAnimations.clear();
-        viewport()->update();
+        requestSceneRepaint();
     });
 }
 
@@ -932,7 +985,7 @@ bool TreemapWidget::viewportEvent(QEvent* event)
             }
             m_liveSplitCache.clear();
             syncScrollBars();
-            viewport()->update();
+            requestSceneRepaint();
         }
         break;
     }
@@ -1065,6 +1118,7 @@ void TreemapWidget::scrollContentsBy(int, int)
 void TreemapWidget::applySettings(const TreemapSettings& settings)
 {
     m_settings = settings;
+    m_revealThresholds = revealThresholds(m_settings);
     m_settings.sanitize();
     updateOwnedTooltipStyle();
     m_headerFont = font();
@@ -1121,14 +1175,14 @@ void TreemapWidget::setScanInProgress(bool inProgress)
     if (!m_scanInProgress) {
         m_scanPath.clear();
     }
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::setScanPath(const QString& path)
 {
     m_scanPath = path;
     if (m_scanInProgress) {
-        viewport()->update();
+        requestSceneRepaint();
     }
 }
 
@@ -1223,7 +1277,7 @@ void TreemapWidget::setFilterParams(const FilterParams& params)
         m_liveSplitCache.clear();
     }
     rebuildSearchMatches();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::setSearchPattern(const QString& pattern)
@@ -1279,7 +1333,7 @@ void TreemapWidget::setHighlightedFileType(const QString& typeLabel)
     clearHoverState(false);
     m_highlightedFileType = normalized;
     rebuildFileTypeMatchesAsync();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::setPreviewHoveredNode(FileNode* node)
@@ -1299,7 +1353,7 @@ void TreemapWidget::setPreviewHoveredNode(FileNode* node)
     m_hoveredTooltip.clear();
     m_hoverBlend = node ? 1.0 : 0.0;
     hideOwnedTooltip();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::zoomCenteredIn()
@@ -1403,6 +1457,8 @@ void TreemapWidget::resetLiveRenderCache()
     m_liveDynamicFrame = QPixmap();
     m_scrollBuffer = QPixmap();
     m_liveFrameDeviceSize = QSize();
+    m_sceneDirty = QRegion();
+    m_deferredLiveStages = 0;
     m_lastLiveRoot = nullptr;
     m_lastLiveOrigin = QPointF();
     m_lastLiveScale = 0.0;
@@ -1448,6 +1504,8 @@ void TreemapWidget::setRoot(std::shared_ptr<TreemapSnapshot> snapshot,
     // hitch when a large refreshed tree replaces the previous one.
     auto oldLiveSplitCache = std::move(m_liveSplitCache);
     m_liveSplitCache = {};
+    auto oldSortedChildrenCache = std::move(m_sortedChildrenCache);
+    m_sortedChildrenCache = {};
     auto oldSizeLabelCache = std::move(m_sizeLabelCache);
     m_sizeLabelCache = {};
     auto oldElidedTextCache = std::move(m_elidedTextCache);
@@ -1493,6 +1551,7 @@ void TreemapWidget::setRoot(std::shared_ptr<TreemapSnapshot> snapshot,
     auto oldSnapshot = std::move(m_snapshot);
     std::thread(
         [oldLiveSplitCache = std::move(oldLiveSplitCache),
+         oldSortedChildrenCache = std::move(oldSortedChildrenCache),
          oldSizeLabelCache = std::move(oldSizeLabelCache),
          oldElidedTextCache = std::move(oldElidedTextCache),
          oldElidedDisplayWidthCache = std::move(oldElidedDisplayWidthCache),
@@ -1619,7 +1678,7 @@ void TreemapWidget::restoreViewState(const ViewState& state,
     m_layoutAnimation.stop();
     m_cameraAnimation.stop();
     if (canAnimate) {
-        previousFrame = renderSceneToPixmap(m_current);
+        previousFrame = captureLiveFrame();
         const QRectF previousViewRect = currentRootViewRect();
         const bool initialMatches = isDescendantOfDirectMatch(m_current);
         if (findVisibleViewRect(m_current, previousViewRect, targetNode, &sourceRect, 0, initialMatches)) {
@@ -1693,7 +1752,7 @@ void TreemapWidget::restoreViewState(const ViewState& state,
         }
         startZoomAnimation(previousFrame, sourceRect, zoomIn, useCrossfade);
     } else {
-        viewport()->update();
+        requestSceneRepaint();
     }
 }
 
@@ -1796,7 +1855,7 @@ void TreemapWidget::clearHoverState(bool notify, bool hideTooltip)
         hideOwnedTooltip();
     }
     if (!dirty.isNull()) {
-        viewport()->update(dirty);
+        requestSceneRepaint(dirty);
     }
     if (notify) {
         emit nodeHovered(nullptr);
@@ -2365,7 +2424,7 @@ void TreemapWidget::closeImagePreview(bool animated)
         m_imagePreviewProgress = 0.0;
         clearImagePreview();
         syncScrollBars();
-        viewport()->update();
+        requestSceneRepaint();
         return;
     }
 
@@ -2399,7 +2458,7 @@ void TreemapWidget::applyLoadedImagePreview(const QString& path, const QImage& i
     }
     m_imagePreviewLoading = false;
     m_imagePreviewImage = image;
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::paintImagePreviewOverlay(QPainter& painter)
@@ -2518,7 +2577,7 @@ void TreemapWidget::panCameraImmediate(const QPointF& sceneDelta)
         m_cameraFocusScenePos += delta;
     }
     syncScrollBars();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::zoomCameraImmediate(qreal targetScale, const QPointF& anchorScenePos,
@@ -2540,7 +2599,7 @@ void TreemapWidget::zoomCameraImmediate(qreal targetScale, const QPointF& anchor
         m_semanticLiveRoot = nullptr;
     }
     syncScrollBars();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::applyPendingWheelZoom()
@@ -2623,7 +2682,7 @@ void TreemapWidget::updateHoverAt(const QPointF& pos, const QPoint& globalPos, b
             m_hoverBlend = hit ? 1.0 : 0.0;
             m_hoverAnimation.stop();
         }
-        viewport()->update(dirty);
+        requestSceneRepaint(dirty);
     }
 
     const bool tooltipChanged = (hit != m_tooltipTarget);
@@ -2997,7 +3056,7 @@ void TreemapWidget::updateTouchGesture(const QList<QEventPoint>& points)
             m_semanticLiveRoot = nullptr;
         }
         syncScrollBars();
-        viewport()->update();
+        requestSceneRepaint();
         return;
     }
 
@@ -3034,13 +3093,14 @@ void TreemapWidget::updateTouchGesture(const QList<QEventPoint>& points)
     m_cameraUseFocusAnchor = false;
     m_cameraPreviousFrame = QPixmap();
     m_cameraNextFrame = QPixmap();
+    m_cameraNextPendingStages = 0;
     m_touchPanLastPos = pos;
     if (m_cameraScale <= kZoomedInThreshold) {
         m_semanticFocus = nullptr;
         m_semanticLiveRoot = nullptr;
     }
     syncScrollBars();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::endTouchGesture()
@@ -3234,17 +3294,18 @@ void TreemapWidget::relayout()
 {
     syncScrollBars();
     if (!m_current) {
-        viewport()->update();
+        requestSceneRepaint();
         return;
     }
 
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::notifyTreeChanged()
 {
     closeImagePreview(false);
     m_liveSplitCache.clear();
+    m_sortedChildrenCache.clear();
     m_sizeLabelCache.clear();
     m_elidedTextCache.clear();
     m_elidedDisplayWidthCache.clear();
@@ -3267,7 +3328,7 @@ void TreemapWidget::notifyTreeChanged()
 
     clearIncrementalSearchState();
     clearHoverState(false);
-    viewport()->update();
+    requestSceneRepaint();
     rebuildSearchMetadataAsync();
 }
 
@@ -3347,7 +3408,7 @@ void TreemapWidget::rebuildSearchMatches()
         m_previousFilterParams = m_filterParams;
         rebuildCombinedMatchCache();
         emit searchResultsChanged();
-        viewport()->update();
+        requestSceneRepaint();
         return;
     }
     // Keep old highlights visible until new results arrive — no premature clear.
@@ -3583,7 +3644,7 @@ void TreemapWidget::onSearchTaskFinished()
 
     rebuildCombinedMatchCache();
     emit searchResultsChanged();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 std::vector<bool> TreemapWidget::captureSearchReachSnapshot() const
@@ -3788,6 +3849,11 @@ void TreemapWidget::rebuildSearchMetadataAsync()
                 for (FileNode* child = node->firstChild; child; child = child->nextSibling) {
                     children.push_back(child);
                 }
+                if (children.size() >= kLayoutChildrenPrecomputeMin) {
+                    // Sorting a huge directory's children on first layout is the
+                    // dominant cost of navigating into it; do it here instead.
+                    index->layoutChildren.insert(node, buildLayoutChildren(node));
+                }
                 for (auto it = children.rbegin(); it != children.rend(); ++it) {
                     FileNode* child = *it;
                     if (!child) continue;
@@ -3854,6 +3920,15 @@ void TreemapWidget::onMetadataTaskFinished(std::shared_ptr<SearchIndex> index,
         node->setIconMark(index->pendingIconMarks[i]);
     }
 
+    // Adopt the precomputed layout inputs. Entries the UI thread already built
+    // on demand are identical, so they are simply kept.
+    for (auto it = index->layoutChildren.begin(); it != index->layoutChildren.end(); ++it) {
+        if (!m_sortedChildrenCache.contains(it.key())) {
+            m_sortedChildrenCache.insert(it.key(), std::move(it.value()));
+        }
+    }
+    index->layoutChildren.clear();
+
     m_nodeCount = index->nodeCount;
     m_searchMatchCache.assign(m_nodeCount, 0);
     m_fileTypeMatchCache.assign(m_nodeCount, 0);
@@ -3863,7 +3938,7 @@ void TreemapWidget::onMetadataTaskFinished(std::shared_ptr<SearchIndex> index,
     clearIncrementalSearchState();
     rebuildSearchMatches();
     rebuildFileTypeMatchesAsync();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::rebuildFileTypeMatchesAsync()
@@ -3880,7 +3955,7 @@ void TreemapWidget::rebuildFileTypeMatchesAsync()
         m_previousHighlightedFileType = m_highlightedFileType;
         emit fileTypeHighlightBusyChanged(false);
         rebuildCombinedMatchCache();
-        viewport()->update();
+        requestSceneRepaint();
         return;
     }
 
@@ -3972,7 +4047,7 @@ void TreemapWidget::onFileTypeMatchTaskFinished()
 
     m_previousHighlightedFileType = m_highlightedFileType;
     rebuildCombinedMatchCache();
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::rebuildCombinedMatchCache()
@@ -4149,15 +4224,18 @@ QString TreemapWidget::cachedElidedLabelWithBucket(const FileNode* node, const Q
     return elided;
 }
 
-TreemapWidget::FilteredChildren TreemapWidget::computeFilteredChildren(FileNode* node, bool parentMatches) const
+LayoutChildren buildLayoutChildren(const FileNode* dir)
 {
-    FilteredChildren result;
-    if (!node) return result;
-
-    for (FileNode* child = node->firstChild; child; child = child->nextSibling) {
-        const qint64 childSize = nodeLayoutSize(child);
+    LayoutChildren result;
+    if (!dir) {
+        return result;
+    }
+    // Layout always uses the apparent size (displaySize) so no tile is ever
+    // invisible; virtual (free space) nodes have size == displaySize.
+    for (FileNode* child = dir->firstChild; child; child = child->nextSibling) {
+        const qint64 childSize = child->displaySize;
         if (childSize > 0) {
-            if (!node->isVirtual() && child->isVirtual()) {
+            if (!dir->isVirtual() && child->isVirtual()) {
                 result.freeChildren.push_back(child);
                 result.freeTotal += childSize;
             } else {
@@ -4166,6 +4244,32 @@ TreemapWidget::FilteredChildren TreemapWidget::computeFilteredChildren(FileNode*
             result.total += childSize;
         }
     }
+
+    const auto bySizeThenName = [](const FileNode* a, const FileNode* b) {
+        if (a->displaySize != b->displaySize) {
+            return a->displaySize > b->displaySize;
+        }
+        return a->name < b->name;
+    };
+    std::sort(result.children.begin(), result.children.end(), bySizeThenName);
+    std::sort(result.freeChildren.begin(), result.freeChildren.end(), bySizeThenName);
+    return result;
+}
+
+const TreemapWidget::FilteredChildren& TreemapWidget::sortedChildren(FileNode* node) const
+{
+    auto it = m_sortedChildrenCache.find(node);
+    if (it != m_sortedChildrenCache.end()) {
+        return *it;
+    }
+    return *m_sortedChildrenCache.insert(node, buildLayoutChildren(node));
+}
+
+TreemapWidget::FilteredChildren TreemapWidget::computeFilteredChildren(FileNode* node, bool parentMatches) const
+{
+    if (!node) return {};
+
+    FilteredChildren result = sortedChildren(node);
 
     // When "hide non-matching" is active, exclude children with no match from layout.
     if (m_filterParams.hideNonMatching && m_filterParams.isActive()) {
@@ -4197,37 +4301,47 @@ void TreemapWidget::layoutVisibleChildren(FileNode* node, const QRectF& tileView
     // Check the split cache before building the children vector — on cache hits
     // (every frame after first render) this avoids an unnecessary heap allocation
     // and a full pass over node->children.
+    // Children below this size in either dimension cannot be painted (every
+    // paint path needs at least minPaint, and the tiny-tile fill at least 1 px),
+    // hit or matched. Huge flat directories have tens of thousands of such
+    // children; they are neither stored in the cache nor returned.
+    const qreal cullSize = std::min<qreal>(1.0, m_settings.minPaint);
+    const qreal viewArea = viewContent.width() * viewContent.height();
+    // Normalized area of a cullSize x cullSize pixel square, for a layout whose
+    // normalized rect is [0, ar] x [0, 1].
+    const auto cullAreaForAr = [&](qreal ar) { return cullSize * cullSize * ar / viewArea; };
+
     auto cacheIt = m_liveSplitCache.find(node);
+    if (cacheIt != m_liveSplitCache.end() && cacheIt->lodMinArea > 0.0
+            && cacheIt->lodMinArea > cullAreaForAr(cacheIt->aspectRatio)) {
+        // The view grew past the detail this entry was computed for.
+        m_liveSplitCache.erase(cacheIt);
+        cacheIt = m_liveSplitCache.end();
+    }
     if (cacheIt == m_liveSplitCache.end()) {
         // Cache miss: build children vector and compute the normalised layout.
         // Cache the layout in normalized [0,1]×[0,1] space so it can be reused
         // on every subsequent call, only scaling to the current viewContent
         // dimensions.  This locks in split directions on first render so they
         // can never flip during a zoom animation.
-        FilteredChildren filtered = computeFilteredChildren(node, parentMatches);
-        std::vector<FileNode*>& children = filtered.children;
-        std::vector<FileNode*>& freeChildren = filtered.freeChildren;
-        qint64 total = filtered.total;
-        qint64 freeTotal = filtered.freeTotal;
+        // children / freeChildren arrive sorted by size from sortedChildren();
+        // the filtered copy is only made when "hide non-matching" applies.
+        FilteredChildren filteredStorage;
+        const FilteredChildren* source = nullptr;
+        if (m_filterParams.hideNonMatching && m_filterParams.isActive() && !parentMatches) {
+            filteredStorage = computeFilteredChildren(node, parentMatches);
+            source = &filteredStorage;
+        } else {
+            source = &sortedChildren(node);
+        }
+        const std::vector<FileNode*>& children = source->children;
+        const std::vector<FileNode*>& freeChildren = source->freeChildren;
+        const qint64 total = source->total;
+        const qint64 freeTotal = source->freeTotal;
 
         if ((children.empty() && freeChildren.empty()) || total <= 0) {
             return;
         }
-
-        std::sort(children.begin(), children.end(),
-                  [](const FileNode* a, const FileNode* b) {
-                      if (a->displaySize != b->displaySize) {
-                          return a->displaySize > b->displaySize;
-                      }
-                      return a->name < b->name;
-                  });
-        std::sort(freeChildren.begin(), freeChildren.end(),
-                  [](const FileNode* a, const FileNode* b) {
-                      if (a->displaySize != b->displaySize) {
-                          return a->displaySize > b->displaySize;
-                      }
-                      return a->name < b->name;
-                  });
 
         // Compute the aspect ratio of the tile in view space.  The AR is used
         // as the width of the normalised layout rect so the squarified algorithm
@@ -4294,19 +4408,27 @@ void TreemapWidget::layoutVisibleChildren(FileNode* node, const QRectF& tileView
             squarifiedLayout(freeChildren, freeRect, freeTotal, normalized, true);
         }
 
-        squarifiedLayout(children, layoutRect, total - freeTotal, normalized, true);
-        cacheIt = m_liveSplitCache.insert(node, SplitCacheEntry{ar, std::move(normalized)});
+        // Store detail down to a quarter of the current cull size in each
+        // dimension so moderate zooming in does not force a recompute.
+        const qreal lodMinArea = cullAreaForAr(ar) / 16.0;
+        squarifiedLayout(children, layoutRect, total - freeTotal, normalized, true, lodMinArea);
+        cacheIt = m_liveSplitCache.insert(node, SplitCacheEntry{ar, std::move(normalized), lodMinArea});
     }
 
     const qreal storedAr = cacheIt->aspectRatio;
+    const qreal scaleX = viewContent.width() / storedAr;
+    const qreal scaleY = viewContent.height();
     // Propagate continuous child view rects through layout and let each paint path
     // snap only the geometry it actually rasterizes. Pre-snapping here makes text
     // and reveal thresholds inherit tile-edge step changes during panning.
     for (const auto& [child, n] : cacheIt->rects) {
-        const qreal left   = viewContent.x() + (n.x() / storedAr) * viewContent.width();
-        const qreal top    = viewContent.y() + n.y() * viewContent.height();
-        const qreal right  = viewContent.x() + ((n.x() + n.width()) / storedAr) * viewContent.width();
-        const qreal bottom = viewContent.y() + (n.y() + n.height()) * viewContent.height();
+        if (n.width() * scaleX < cullSize || n.height() * scaleY < cullSize) {
+            continue;
+        }
+        const qreal left   = viewContent.x() + n.x() * scaleX;
+        const qreal top    = viewContent.y() + n.y() * scaleY;
+        const qreal right  = viewContent.x() + (n.x() + n.width()) * scaleX;
+        const qreal bottom = viewContent.y() + (n.y() + n.height()) * scaleY;
         const QRectF childViewRect(left, top, right - left, bottom - top);
         if (childViewRect.intersects(visibleClip)) {
             out.emplace_back(child, childViewRect);
@@ -4462,7 +4584,7 @@ bool TreemapWidget::canPaintChildrenForDisplay(const FileNode* node, const QRect
         }
     }
 
-    const RevealThresholds thresholds = revealThresholds(m_settings);
+    const RevealThresholds& thresholds = m_revealThresholds;
     const QSizeF size = viewBounds.size();
     const qreal dpBias = 1.0 / pixelScale();
     return size.width()  >= thresholds.childStartWidth  - dpBias
@@ -4472,7 +4594,7 @@ bool TreemapWidget::canPaintChildrenForDisplay(const FileNode* node, const QRect
 qreal TreemapWidget::tileRevealOpacityForNode(const FileNode* node, const QRectF& layoutArea) const
 {
     Q_UNUSED(node);
-    const RevealThresholds thresholds = revealThresholds(m_settings);
+    const RevealThresholds& thresholds = m_revealThresholds;
     return revealOpacityForSize(layoutArea.size(),
                                 thresholds.childStartWidth, thresholds.childStartHeight,
                                 thresholds.childFullWidth, thresholds.childFullHeight);
@@ -4481,7 +4603,7 @@ qreal TreemapWidget::tileRevealOpacityForNode(const FileNode* node, const QRectF
 qreal TreemapWidget::tinyChildRevealOpacityForLayout(const FileNode* node, const QRectF& layoutArea) const
 {
     Q_UNUSED(node);
-    const RevealThresholds thresholds = revealThresholds(m_settings);
+    const RevealThresholds& thresholds = m_revealThresholds;
     const qreal tinyStart = std::max<qreal>(1.0, m_settings.minTileSize);
     const qreal tinyFullWidth = std::max<qreal>(tinyStart, thresholds.childStartWidth);
     const qreal tinyFullHeight = std::max<qreal>(tinyStart, thresholds.childStartHeight);
@@ -4514,7 +4636,7 @@ qreal TreemapWidget::childRevealOpacityForLayout(const FileNode* node, const QRe
 
 qreal TreemapWidget::folderDetailOpacityForNode(const FileNode* node, const QRectF& bounds) const
 {
-    const RevealThresholds thresholds = revealThresholds(m_settings);
+    const RevealThresholds& thresholds = m_revealThresholds;
     const QSizeF stabilizedSize = stabilizedNodeSize(
         node, StableMetricChannel::FolderDetail, bounds.size(),
         kRevealWidthBucketPx, kRevealHeightBucketPx,
@@ -4568,6 +4690,27 @@ void TreemapWidget::animateCameraTo(qreal scale, const QPointF& origin,
     const qreal clampedScale = std::clamp(scale, kCameraMinScale, m_settings.cameraMaxScale);
     const QPointF clampedOrigin = clampCameraOrigin(origin, clampedScale);
 
+    // Fast wheel zoom: the outgoing frame is whatever is on screen right now,
+    // either the cached live frames or the in-flight blend of a running camera
+    // animation. Neither needs a scene render. Captured before the animation
+    // state below is overwritten, since the blend depends on it.
+    const bool useTransitionFrames = m_settings.fastWheelZoom && m_current
+        && !viewport()->size().isEmpty();
+    QPixmap outgoingFrame;
+    if (useTransitionFrames) {
+        if (m_cameraAnimation.state() == QAbstractAnimation::Running
+                && !m_cameraPreviousFrame.isNull()) {
+            const qreal dpr = pixelScale();
+            outgoingFrame = QPixmap(liveFrameDeviceSizeForViewport(dpr));
+            outgoingFrame.setDevicePixelRatio(dpr);
+            outgoingFrame.fill(palette().color(QPalette::Window));
+            QPainter painter(&outgoingFrame);
+            paintCameraTransition(painter);
+        } else {
+            outgoingFrame = captureLiveFrame();
+        }
+    }
+
     m_cameraAnimation.stop();
     m_cameraAnimation.setDuration(m_settings.cameraDurationMs);
     m_cameraAnimation.setEasingCurve(QEasingCurve::OutCubic);
@@ -4584,24 +4727,19 @@ void TreemapWidget::animateCameraTo(qreal scale, const QPointF& origin,
         return;
     }
 
-    if (m_settings.fastWheelZoom && m_current && !viewport()->size().isEmpty()) {
-        // Render previous frame first and copy it out, so the second render into
-        // m_liveFrame doesn't clobber it. The next frame is left sharing m_liveFrame
-        // (safe: the animation paint branch never calls renderSceneToPixmap, and the
-        // finished handler clears both frames before the next paint).
-        // Both frames are rendered at the current semantic depth so no extra layout
-        // work is needed; the depth transition is handled by the finished handler.
-        m_cameraPreviousFrame = renderSceneToPixmap(m_current).copy();
-
-        const qreal savedScale = m_cameraScale;
-        const QPointF savedOrigin = m_cameraOrigin;
-        m_cameraScale = m_cameraTargetScale;
-        m_cameraOrigin = m_cameraTargetOrigin;
-
-        m_cameraNextFrame = renderSceneToPixmap(m_current);
-
-        m_cameraScale = savedScale;
-        m_cameraOrigin = savedOrigin;
+    if (useTransitionFrames && !outgoingFrame.isNull()) {
+        // The destination frame is rendered by the tick handler, one layer per
+        // tick, so the animation starts without waiting for a scene render.
+        // Both frames use the semantic depth in effect now; the depth
+        // transition is handled by the finished handler.
+        m_cameraPreviousFrame = outgoingFrame;
+        m_cameraNextFrame = QPixmap();
+        m_cameraNextPendingStages = 2;
+        m_cameraFrameSemanticDepth = m_activeSemanticDepth;
+    } else {
+        m_cameraPreviousFrame = QPixmap();
+        m_cameraNextFrame = QPixmap();
+        m_cameraNextPendingStages = 0;
     }
 
     m_cameraAnimation.start();
@@ -4726,7 +4864,7 @@ void TreemapWidget::applyScrollBarCameraPosition()
     m_cameraOrigin = clamped;
     m_cameraStartOrigin = clamped;
     m_cameraTargetOrigin = clamped;
-    viewport()->update();
+    requestSceneRepaint();
 }
 
 void TreemapWidget::drawScene(QPainter& painter, FileNode* root, const QRectF& visibleClip,
@@ -4818,6 +4956,259 @@ QPixmap TreemapWidget::renderSceneToPixmap(FileNode* root)
     drawMatchOverlay(painter, root, fullClip);
     return frame;
 }
+
+void TreemapWidget::requestSceneRepaint(const QRect& rect)
+{
+    if (rect.isNull()) {
+        m_sceneDirty = QRegion(viewport()->rect());
+        viewport()->update();
+        return;
+    }
+    if (rect.isEmpty()) {
+        return;
+    }
+    m_sceneDirty += rect;
+    viewport()->update(rect);
+}
+
+bool TreemapWidget::liveFramesMatchCurrentView(const QSize& deviceSize) const
+{
+    return m_current == m_lastLiveRoot
+        && m_cameraOrigin == m_lastLiveOrigin
+        && m_cameraScale == m_lastLiveScale
+        && m_activeSemanticDepth == m_lastLiveDepth
+        && !m_liveStaticFrame.isNull()
+        && !m_liveDynamicFrame.isNull()
+        && m_liveFrameDeviceSize == deviceSize;
+}
+
+QSize TreemapWidget::liveFrameDeviceSizeForViewport(qreal dpr) const
+{
+    return QSize(
+        std::max(1, static_cast<int>(std::ceil(viewport()->width() * dpr))),
+        std::max(1, static_cast<int>(std::ceil(viewport()->height() * dpr))));
+}
+
+// Marks the live frames as belonging to the current view and (re)allocates
+// them if needed. The pixel content is stale until both layers are rendered.
+void TreemapWidget::prepareLiveFrames(const QSize& deviceSize, qreal dpr)
+{
+    m_lastLiveRoot = m_current;
+    m_lastLiveOrigin = m_cameraOrigin;
+    m_lastLiveScale = m_cameraScale;
+    m_lastLiveDepth = m_activeSemanticDepth;
+    if (m_liveStaticFrame.isNull() || m_liveDynamicFrame.isNull()
+            || m_liveFrameDeviceSize != deviceSize) {
+        m_liveStaticFrame = QPixmap(deviceSize);
+        m_liveStaticFrame.setDevicePixelRatio(dpr);
+        m_liveDynamicFrame = QPixmap(deviceSize);
+        m_liveDynamicFrame.setDevicePixelRatio(dpr);
+        m_liveFrameDeviceSize = deviceSize;
+    }
+    m_thumbnailFramePinSet.clear();
+    // Regions reported stale before this point are covered by the upcoming
+    // full render. Anything reported after it stays tracked.
+    m_sceneDirty = QRegion();
+}
+
+void TreemapWidget::renderLiveStaticLayer()
+{
+    QPainter sp(&m_liveStaticFrame);
+    sp.setRenderHint(QPainter::Antialiasing, false);
+    sp.fillRect(viewport()->rect(), palette().color(QPalette::Window));
+    drawScene(sp, m_current, QRectF(viewport()->rect()), SceneRenderLayer::StaticOnly);
+}
+
+void TreemapWidget::renderLiveDynamicLayer()
+{
+    m_liveDynamicFrame.fill(Qt::transparent);
+    {
+        QPainter dp(&m_liveDynamicFrame);
+        dp.setRenderHint(QPainter::Antialiasing, false);
+        drawScene(dp, m_current, QRectF(viewport()->rect()), SceneRenderLayer::DynamicOnly);
+        drawMatchOverlay(dp, m_current, QRectF(viewport()->rect()));
+    }
+    pruneThumbnailCache();
+}
+
+void TreemapWidget::renderLiveFramesFull(const QSize& deviceSize, qreal dpr)
+{
+    prepareLiveFrames(deviceSize, dpr);
+    renderLiveStaticLayer();
+    renderLiveDynamicLayer();
+    m_deferredLiveStages = 0;
+}
+
+// Renders the next pending layer of a deferred live render. Returns true when
+// nothing remains pending (either finished or cancelled because the view moved).
+bool TreemapWidget::renderDeferredLiveStage()
+{
+    if (m_deferredLiveStages <= 0) {
+        return true;
+    }
+    if (!liveFramesMatchCurrentView(liveFrameDeviceSizeForViewport(pixelScale()))) {
+        m_deferredLiveStages = 0;
+        return true;
+    }
+    if (m_deferredLiveStages >= 2) {
+        renderLiveStaticLayer();
+        m_deferredLiveStages = 1;
+        return false;
+    }
+    renderLiveDynamicLayer();
+    m_deferredLiveStages = 0;
+    return true;
+}
+
+void TreemapWidget::completeDeferredLiveRender()
+{
+    while (m_deferredLiveStages > 0) {
+        renderDeferredLiveStage();
+    }
+}
+
+void TreemapWidget::renderCameraNextFrameStage()
+{
+    if (m_cameraNextPendingStages <= 0 || !m_current) {
+        return;
+    }
+    const qreal dpr = pixelScale();
+    const QSize deviceSize = liveFrameDeviceSizeForViewport(dpr);
+    if (m_cameraNextFrame.isNull() || m_cameraNextFrame.size() != deviceSize) {
+        m_cameraNextFrame = QPixmap(deviceSize);
+        m_cameraNextFrame.setDevicePixelRatio(dpr);
+        m_cameraNextFrame.fill(palette().color(QPalette::Window));
+        m_cameraNextPendingStages = 2;
+    }
+
+    // Render at the destination camera and the depth the outgoing frame used.
+    const qreal savedScale = m_cameraScale;
+    const QPointF savedOrigin = m_cameraOrigin;
+    const int savedDepth = m_activeSemanticDepth;
+    m_cameraScale = m_cameraTargetScale;
+    m_cameraOrigin = m_cameraTargetOrigin;
+    m_activeSemanticDepth = m_cameraFrameSemanticDepth;
+    {
+        QPainter painter(&m_cameraNextFrame);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        const QRectF fullClip(0, 0, viewport()->width(), viewport()->height());
+        if (m_cameraNextPendingStages >= 2) {
+            drawScene(painter, m_current, fullClip, SceneRenderLayer::StaticOnly);
+            m_cameraNextPendingStages = 1;
+        } else {
+            drawScene(painter, m_current, fullClip, SceneRenderLayer::DynamicOnly);
+            drawMatchOverlay(painter, m_current, fullClip);
+            m_cameraNextPendingStages = 0;
+        }
+    }
+    m_cameraScale = savedScale;
+    m_cameraOrigin = savedOrigin;
+    m_activeSemanticDepth = savedDepth;
+}
+
+// Paints the fast wheel zoom blend for the current camera state.
+void TreemapWidget::paintCameraTransition(QPainter& painter)
+{
+    const qreal t = m_cameraAnimation.currentValue().toReal();
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const qreal curScale = m_cameraScale;
+    const QPointF curOrigin = m_cameraOrigin;
+    const QRectF vpRect(0, 0, viewport()->width(), viewport()->height());
+
+    const qreal prevRatio = curScale / m_cameraStartScale;
+    const QPointF prevOffset = (m_cameraStartOrigin - curOrigin) * curScale;
+    const QRectF prevRect(prevOffset.x(), prevOffset.y(),
+                          vpRect.width() * prevRatio, vpRect.height() * prevRatio);
+
+    const qreal nextRatio = curScale / m_cameraTargetScale;
+    const QPointF nextOffset = (m_cameraTargetOrigin - curOrigin) * curScale;
+    const QRectF nextRect(nextOffset.x(), nextOffset.y(),
+                          vpRect.width() * nextRatio, vpRect.height() * nextRatio);
+
+    const bool previousCoversViewport = prevRect.width() >= vpRect.width()
+        && prevRect.height() >= vpRect.height();
+    const bool nextReady = !m_cameraNextFrame.isNull() && m_cameraNextPendingStages == 0;
+
+    painter.setOpacity(1.0);
+    if (!nextReady) {
+        // Destination still rendering: stretch the outgoing frame alone while it
+        // covers the viewport (zoom in); hold it in place otherwise (zoom out),
+        // so no window background shows around it.
+        painter.drawPixmap(previousCoversViewport ? prevRect : vpRect,
+                           m_cameraPreviousFrame, QRectF(m_cameraPreviousFrame.rect()));
+    } else if (previousCoversViewport) {
+        painter.drawPixmap(prevRect, m_cameraPreviousFrame, QRectF(m_cameraPreviousFrame.rect()));
+        painter.setOpacity(t);
+        painter.drawPixmap(nextRect, m_cameraNextFrame, QRectF(m_cameraNextFrame.rect()));
+    } else {
+        painter.drawPixmap(nextRect, m_cameraNextFrame, QRectF(m_cameraNextFrame.rect()));
+        painter.setOpacity(1.0 - t);
+        painter.drawPixmap(prevRect, m_cameraPreviousFrame, QRectF(m_cameraPreviousFrame.rect()));
+    }
+
+    painter.setOpacity(1.0);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+}
+
+void TreemapWidget::renderLiveFramesRegion(const QRect& dirty)
+{
+    m_sceneDirty = QRegion();
+    if (dirty.isEmpty()) {
+        return;
+    }
+    {
+        QPainter sp(&m_liveStaticFrame);
+        sp.setRenderHint(QPainter::Antialiasing, false);
+        sp.setClipRect(dirty);
+        // Clear the dirty region before repainting so cached pixels don't show through.
+        sp.fillRect(dirty, palette().color(QPalette::Window));
+        drawScene(sp, m_current, QRectF(dirty), SceneRenderLayer::StaticOnly);
+    }
+    {
+        QPainter dp(&m_liveDynamicFrame);
+        dp.setRenderHint(QPainter::Antialiasing, false);
+        dp.setCompositionMode(QPainter::CompositionMode_Source);
+        dp.fillRect(dirty, Qt::transparent);
+        dp.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        dp.setClipRect(dirty);
+        drawScene(dp, m_current, QRectF(dirty), SceneRenderLayer::DynamicOnly);
+        drawMatchOverlay(dp, m_current, QRectF(dirty));
+    }
+}
+
+QPixmap TreemapWidget::composeLiveFrames() const
+{
+    QPixmap frame(m_liveStaticFrame.size());
+    frame.setDevicePixelRatio(m_liveStaticFrame.devicePixelRatio());
+    QPainter painter(&frame);
+    painter.drawPixmap(0, 0, m_liveStaticFrame);
+    painter.drawPixmap(0, 0, m_liveDynamicFrame);
+    return frame;
+}
+
+// Brings the live static/dynamic frames up to date for the current view and
+// returns their composite. Unlike renderSceneToPixmap(), this reuses whatever
+// is already cached (a full scene render only when the view actually changed)
+// and leaves the cache valid, so the next paintEvent can blit instead of
+// re-rendering.
+QPixmap TreemapWidget::captureLiveFrame()
+{
+    if (!m_current || viewport()->width() <= 0 || viewport()->height() <= 0) {
+        return QPixmap();
+    }
+    const qreal dpr = pixelScale();
+    const QSize deviceSize = liveFrameDeviceSizeForViewport(dpr);
+    if (!liveFramesMatchCurrentView(deviceSize)) {
+        renderLiveFramesFull(deviceSize, dpr);
+    } else {
+        completeDeferredLiveRender();
+        if (!m_sceneDirty.isEmpty()) {
+            renderLiveFramesRegion(m_sceneDirty.boundingRect().intersected(viewport()->rect()));
+        }
+    }
+    return composeLiveFrames();
+}
 QRectF TreemapWidget::zoomRectForAnchor(const QRectF& preferredRect, const QPointF& anchorPos) const
 {
     const QRectF fullRect(QPointF(0, 0), QSizeF(viewport()->width(), viewport()->height()));
@@ -4865,7 +5256,21 @@ void TreemapWidget::startZoomAnimation(const QPixmap& previousFrame,
 {
     m_zoomAnimation.stop();
     m_previousFrame = previousFrame;
-    m_nextFrame = renderSceneToPixmap(m_current);
+    // The destination goes straight into the live frame cache so the first
+    // paint after the animation is a blit rather than a third full scene render.
+    // For zoom-in the destination is invisible during the first ticks (it fades
+    // in with the eased progress), so its render is deferred to the tick handler,
+    // one layer per tick, and the animation starts without waiting for it.
+    // Zoom-out and crossfade show the destination on the first frame.
+    const bool deferDestination = zoomIn && !crossfadeOnly && m_current;
+    if (deferDestination) {
+        const qreal dpr = pixelScale();
+        prepareLiveFrames(liveFrameDeviceSizeForViewport(dpr), dpr);
+        m_deferredLiveStages = 2;
+        m_nextFrame = QPixmap();
+    } else {
+        m_nextFrame = captureLiveFrame();
+    }
     m_zoomingIn = zoomIn;
     m_zoomCrossfadeOnly = crossfadeOnly;
 
@@ -4969,15 +5374,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
         p.save();
         const QColor folderBase = QColor::fromRgba(node->color);
         const qreal borderIntensity = std::clamp(m_settings.borderIntensity, 0.0, 1.0);
-        const bool useLightBorder = shouldUseLightBorder(folderBase, m_settings.borderStyle);
-        QColor vibrantTarget;
-        {
-            float h, s, l, a;
-            folderBase.getHslF(&h, &s, &l, &a);
-            const float boostedS = std::clamp(s * 1.25f, 0.0f, 1.0f);
-            vibrantTarget.setHslF(h, boostedS, useLightBorder ? 0.92f : 0.10f, a);
-        }
-        const QColor outerBorderBase = blendColors(folderBase, vibrantTarget, borderIntensity);
+        const QColor outerBorderBase = cachedVibrantBorderBase(folderBase, m_settings.borderStyle, borderIntensity);
         
         const QColor panelBase = cachedPanelBase(folderBase, m_framePalette.color(QPalette::Base));
         const QColor hoverBase = m_settings.highlightColor;
@@ -5336,7 +5733,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
                         p.restore();
                     }
                     if (loadAlpha < 1.0) {
-                        QTimer::singleShot(16, this, [this]() { viewport()->update(); });
+                        QTimer::singleShot(16, this, [this]() { requestSceneRepaint(); });
                     }
                 } else if (!m_pendingThumbnails.contains(path) && !m_thumbnailFailedPaths.contains(path)) {
                     m_pendingThumbnails.insert(path);
@@ -5352,15 +5749,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
 
         if (outlineWidth > 0.0 && layer != SceneRenderLayer::DynamicOnly) {
             const qreal clampedBorderIntensity = std::clamp(m_settings.borderIntensity, 0.0, 1.0);
-            const bool useLightFileBorder = shouldUseLightBorder(fc, m_settings.borderStyle);
-            QColor vibrantFileTarget;
-            {
-                float h, s, l, a;
-                fc.getHslF(&h, &s, &l, &a);
-                const float boostedS = std::clamp(s * 1.25f, 0.0f, 1.0f);
-                vibrantFileTarget.setHslF(h, boostedS, useLightFileBorder ? 0.92f : 0.10f, a);
-            }
-            const QColor fileBorderBase = blendColors(fc, vibrantFileTarget, clampedBorderIntensity);
+            const QColor fileBorderBase = cachedVibrantBorderBase(fc, m_settings.borderStyle, clampedBorderIntensity);
 
             const QColor highlightBorderBase = hoverBase;
             const QColor contrastBorder = contrastingBorderColor(fillColor);
@@ -5623,9 +6012,10 @@ void TreemapWidget::paintEvent(QPaintEvent* event)
     }
 
     if (m_zoomAnimation.state() == QAbstractAnimation::Running
-            && !m_previousFrame.isNull() && !m_nextFrame.isNull()) {
+            && !m_previousFrame.isNull()
+            && (!m_nextFrame.isNull() || m_deferredLiveStages > 0)) {
         const qreal progress = m_zoomAnimation.currentValue().toReal();
-        if (m_zoomCrossfadeOnly) {
+        if (m_zoomCrossfadeOnly && !m_nextFrame.isNull()) {
             painter.drawPixmap(0, 0, m_previousFrame);
             painter.setOpacity(progress);
             painter.drawPixmap(0, 0, m_nextFrame);
@@ -5657,9 +6047,13 @@ void TreemapWidget::paintEvent(QPaintEvent* event)
             painter.setOpacity(1.0);
             painter.drawPixmap(fullRect, m_previousFrame, previousShrinkingSourceRect);
 
-            painter.setOpacity(progress);
-            painter.drawPixmap(expandingRect, m_nextFrame, nextFullSourceRect);
-        } else {
+            // Null while the deferred destination render is still pending; at
+            // that point the eased progress keeps it near-transparent anyway.
+            if (!m_nextFrame.isNull()) {
+                painter.setOpacity(progress);
+                painter.drawPixmap(expandingRect, m_nextFrame, nextFullSourceRect);
+            }
+        } else if (!m_nextFrame.isNull()) {
             // Zoom the parent scene back out from the destination tile so
             // zoom-out reads like the inverse of zoom-in instead of a static
             // background with only the departing folder moving.
@@ -5678,40 +6072,8 @@ void TreemapWidget::paintEvent(QPaintEvent* event)
 
     if (m_cameraAnimation.state() == QAbstractAnimation::Running
             && m_settings.fastWheelZoom
-            && !m_cameraPreviousFrame.isNull() && !m_cameraNextFrame.isNull()) {
-        const qreal t = m_cameraAnimation.currentValue().toReal();
-        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
-        const qreal curScale = m_cameraScale;
-        const QPointF curOrigin = m_cameraOrigin;
-        const QRectF vpRect(0, 0, viewport()->width(), viewport()->height());
-
-        const qreal prevRatio = curScale / m_cameraStartScale;
-        const QPointF prevOffset = (m_cameraStartOrigin - curOrigin) * curScale;
-        const QRectF prevRect(prevOffset.x(), prevOffset.y(),
-                              vpRect.width() * prevRatio, vpRect.height() * prevRatio);
-
-        const qreal nextRatio = curScale / m_cameraTargetScale;
-        const QPointF nextOffset = (m_cameraTargetOrigin - curOrigin) * curScale;
-        const QRectF nextRect(nextOffset.x(), nextOffset.y(),
-                              vpRect.width() * nextRatio, vpRect.height() * nextRatio);
-
-        const bool previousCoversViewport = prevRect.width() >= vpRect.width()
-            && prevRect.height() >= vpRect.height();
-        if (previousCoversViewport) {
-            painter.setOpacity(1.0);
-            painter.drawPixmap(prevRect, m_cameraPreviousFrame, QRectF(m_cameraPreviousFrame.rect()));
-            painter.setOpacity(t);
-            painter.drawPixmap(nextRect, m_cameraNextFrame, QRectF(m_cameraNextFrame.rect()));
-        } else {
-            painter.setOpacity(1.0);
-            painter.drawPixmap(nextRect, m_cameraNextFrame, QRectF(m_cameraNextFrame.rect()));
-            painter.setOpacity(1.0 - t);
-            painter.drawPixmap(prevRect, m_cameraPreviousFrame, QRectF(m_cameraPreviousFrame.rect()));
-        }
-
-        painter.setOpacity(1.0);
-        painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+            && !m_cameraPreviousFrame.isNull()) {
+        paintCameraTransition(painter);
         paintImagePreviewOverlay(painter);
         return;
     }
@@ -5736,11 +6098,27 @@ void TreemapWidget::paintEvent(QPaintEvent* event)
         return;
     }
 
-    const QRect dirty = event->rect();
     const qreal dpr = pixelScale();
-    const QSize deviceSize(
-        std::max(1, static_cast<int>(std::ceil(viewport()->width() * dpr))),
-        std::max(1, static_cast<int>(std::ceil(viewport()->height() * dpr))));
+    const QSize deviceSize = liveFrameDeviceSizeForViewport(dpr);
+
+    // Default (full render) camera zoom: every tick changes the scale, so the
+    // live frame cache cannot be reused and would only be rebuilt and blitted.
+    // Render the scene straight into the viewport in one pass instead. The
+    // cache keeps its previous markers, so the settle frame after the
+    // animation rebuilds it normally.
+    if (m_cameraAnimation.state() == QAbstractAnimation::Running) {
+        m_thumbnailFramePinSet.clear();
+        painter.fillRect(viewport()->rect(), palette().color(QPalette::Window));
+        drawScene(painter, m_current, QRectF(viewport()->rect()), SceneRenderLayer::All);
+        drawMatchOverlay(painter, m_current, QRectF(viewport()->rect()));
+        pruneThumbnailCache();
+        paintImagePreviewOverlay(painter);
+        paintLaunchAnimations(painter);
+        return;
+    }
+
+    // A zoom-in that was interrupted may leave layers of the live frames unrendered.
+    completeDeferredLiveRender();
 
     // Pure-pan fast path: when only the camera origin changed (scale, depth, root are
     // the same), all tiles shift by a fixed pixel offset.  To avoid stale text/thumbnail
@@ -5834,61 +6212,13 @@ void TreemapWidget::paintEvent(QPaintEvent* event)
         // Fall through to full redraw for large pan steps (e.g. scroll-bar jump).
     }
 
-    const bool stateChanged = (m_current != m_lastLiveRoot ||
-                               m_cameraOrigin != m_lastLiveOrigin ||
-                               m_cameraScale != m_lastLiveScale ||
-                               m_activeSemanticDepth != m_lastLiveDepth ||
-                               m_liveStaticFrame.isNull() ||
-                               m_liveDynamicFrame.isNull() ||
-                               m_liveFrameDeviceSize != deviceSize);
-
-    if (stateChanged) {
-        m_lastLiveRoot = m_current;
-        m_lastLiveOrigin = m_cameraOrigin;
-        m_lastLiveScale = m_cameraScale;
-        m_lastLiveDepth = m_activeSemanticDepth;
-        if (m_liveStaticFrame.isNull() || m_liveFrameDeviceSize != deviceSize) {
-            m_liveStaticFrame = QPixmap(deviceSize);
-            m_liveStaticFrame.setDevicePixelRatio(dpr);
-            m_liveDynamicFrame = QPixmap(deviceSize);
-            m_liveDynamicFrame.setDevicePixelRatio(dpr);
-            m_liveFrameDeviceSize = deviceSize;
-        }
-        m_thumbnailFramePinSet.clear();
-        {
-            QPainter sp(&m_liveStaticFrame);
-            sp.setRenderHint(QPainter::Antialiasing, false);
-            sp.fillRect(viewport()->rect(), palette().color(QPalette::Window));
-            drawScene(sp, m_current, QRectF(viewport()->rect()), SceneRenderLayer::StaticOnly);
-        }
-        m_liveDynamicFrame.fill(Qt::transparent);
-        {
-            QPainter dp(&m_liveDynamicFrame);
-            dp.setRenderHint(QPainter::Antialiasing, false);
-            drawScene(dp, m_current, QRectF(viewport()->rect()), SceneRenderLayer::DynamicOnly);
-            drawMatchOverlay(dp, m_current, QRectF(viewport()->rect()));
-        }
-        pruneThumbnailCache();
-    } else if (!dirty.isEmpty()) {
-        // Partial update for hover etc
-        {
-            QPainter sp(&m_liveStaticFrame);
-            sp.setRenderHint(QPainter::Antialiasing, false);
-            sp.setClipRect(dirty);
-            // Clear the dirty region before repainting so cached pixels don't show through.
-            sp.fillRect(dirty, palette().color(QPalette::Window));
-            drawScene(sp, m_current, QRectF(dirty), SceneRenderLayer::StaticOnly);
-        }
-        {
-            QPainter dp(&m_liveDynamicFrame);
-            dp.setRenderHint(QPainter::Antialiasing, false);
-            dp.setCompositionMode(QPainter::CompositionMode_Source);
-            dp.fillRect(dirty, Qt::transparent);
-            dp.setCompositionMode(QPainter::CompositionMode_SourceOver);
-            dp.setClipRect(dirty);
-            drawScene(dp, m_current, QRectF(dirty), SceneRenderLayer::DynamicOnly);
-            drawMatchOverlay(dp, m_current, QRectF(dirty));
-        }
+    if (!liveFramesMatchCurrentView(deviceSize)) {
+        renderLiveFramesFull(deviceSize, dpr);
+    } else if (!m_sceneDirty.isEmpty()) {
+        // Partial update for hover etc. Only the region reported stale via
+        // requestSceneRepaint() is re-rendered; a paint triggered purely by an
+        // animation tick or an expose is a plain blit of the cached frames.
+        renderLiveFramesRegion(m_sceneDirty.boundingRect().intersected(viewport()->rect()));
     }
 
     painter.drawPixmap(0, 0, m_liveStaticFrame);
@@ -5908,7 +6238,7 @@ void TreemapWidget::paintEvent(QPaintEvent* event)
             && m_cameraAnimation.state() != QAbstractAnimation::Running) {
         --m_continuousZoomSettleFramesRemaining;
         if (m_continuousZoomSettleFramesRemaining > 0) {
-            viewport()->update();
+            requestSceneRepaint();
         }
     }
 }
@@ -5992,8 +6322,9 @@ void TreemapWidget::mouseMoveEvent(QMouseEvent* event)
         m_cameraUseFocusAnchor = false;
         m_cameraPreviousFrame = QPixmap();
         m_cameraNextFrame = QPixmap();
+        m_cameraNextPendingStages = 0;
         syncScrollBars();
-        viewport()->update();
+        requestSceneRepaint();
         return;
     }
 

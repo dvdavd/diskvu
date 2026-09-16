@@ -2988,7 +2988,7 @@ void MainWindow::recolorCurrentTree()
     auto* watcher = new QFutureWatcher<void>(this);
     connect(watcher, &QFutureWatcher<void>::finished, this, [this, watcher, root, legendRoot, summaries]() {
         watcher->deleteLater();
-        m_treemapWidget->viewport()->update();
+        m_treemapWidget->requestSceneRepaint();
         if (m_directoryTree && m_scanResult.root == root) {
             for (int i = 0; i < m_directoryTree->topLevelItemCount(); ++i) {
                 refreshDirectoryTreeIcons(m_directoryTree->topLevelItem(i));
@@ -3068,7 +3068,7 @@ void MainWindow::recolorNodeSubtree(FileNode* node)
     auto* watcher = new QFutureWatcher<void>(this);
     connect(watcher, &QFutureWatcher<void>::finished, this, [this, watcher, scanRoot]() {
         watcher->deleteLater();
-        if (m_treemapWidget) m_treemapWidget->viewport()->update();
+        if (m_treemapWidget) m_treemapWidget->requestSceneRepaint();
         if (m_directoryTree && m_scanResult.root == scanRoot) {
             for (int i = 0; i < m_directoryTree->topLevelItemCount(); ++i)
                 refreshDirectoryTreeIcons(m_directoryTree->topLevelItem(i));
@@ -3118,7 +3118,7 @@ void MainWindow::markFolder(FileNode* node, FolderMark mark)
         recolorNodeSubtree(node);
     } else {
         // Icon-only mark: no color recomputation needed.
-        if (m_treemapWidget) m_treemapWidget->viewport()->update();
+        if (m_treemapWidget) m_treemapWidget->requestSceneRepaint();
     }
 }
 

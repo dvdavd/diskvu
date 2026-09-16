@@ -3,6 +3,7 @@
 #pragma once
 
 #include "filenode.h"
+#include "treemap_drawing.h"
 #include "treemapsnapshot.h"
 #include "filterparams.h"
 #include "treemapsettings.h"
@@ -48,8 +49,23 @@ class QScrollBar;
 
 // Immutable search index: built once per tree, shared with background search threads.
 // Held via shared_ptr so background tasks keep it alive after a tree change.
+// A directory's layout inputs: children split into regular and free-space
+// (virtual) groups, each sorted by display size descending then name.
+struct LayoutChildren {
+    std::vector<FileNode*> children;
+    std::vector<FileNode*> freeChildren;
+    qint64 total = 0;
+    qint64 freeTotal = 0;
+};
+LayoutChildren buildLayoutChildren(const FileNode* dir);
+// Directories with at least this many children get their LayoutChildren
+// precomputed by the background metadata pass.
+constexpr size_t kLayoutChildrenPrecomputeMin = 64;
+
 struct SearchIndex {
     std::vector<FileNode*> nodes;      // all searchable nodes (files + dirs)
+    // Precomputed layout inputs for large directories (see kLayoutChildrenPrecomputeMin).
+    QHash<FileNode*, LayoutChildren> layoutChildren;
     std::vector<uint32_t> nameOffsets; // indexed by node->id → byte offset in flatNames
     std::vector<uint16_t> nameLens;    // indexed by node->id → byte length in flatNames
     QHash<uint64_t, std::vector<FileNode*>> filesByExt; // packed extension key → matching files
@@ -152,6 +168,12 @@ public:
     bool nodeSupportsImagePreview(const FileNode* node) const;
     void requestImagePreview(FileNode* node, const QRectF& sourceRect);
 
+    // Repaint requests for anything baked into the live frames (tiles, labels,
+    // hover, thumbnails, match overlay) go through here so the stale region is
+    // tracked. A null rect means the whole viewport. Animation ticks that only
+    // re-composite pre-rendered pixmaps may call viewport()->update() directly.
+    void requestSceneRepaint(const QRect& rect = QRect());
+
 signals:
     void nodeActivated(FileNode* node);
     void nodeOpenFile(FileNode* node);
@@ -217,13 +239,12 @@ private:
                                         const QFontMetrics& metrics, quint64 fontKey,
                                         int bucket,
                                         Qt::LayoutDirection direction = Qt::LeftToRight) const;
-    struct FilteredChildren {
-        std::vector<FileNode*> children;
-        std::vector<FileNode*> freeChildren;
-        qint64 total = 0;
-        qint64 freeTotal = 0;
-    };
+    using FilteredChildren = LayoutChildren;
     FilteredChildren computeFilteredChildren(FileNode* node, bool parentMatches) const;
+    // Children of a node sorted by layout size (unfiltered), cached for the
+    // lifetime of the tree. Navigation clears the split cache but not this, so
+    // re-laying-out a directory never re-walks and re-sorts its children.
+    const FilteredChildren& sortedChildren(FileNode* node) const;
 
     void layoutVisibleChildren(FileNode* node, const QRectF& tileViewRect,
                                const QRectF& viewContent,
@@ -256,6 +277,21 @@ private:
     void drawMatchOverlay(QPainter& painter, FileNode* root,
                           const QRectF& visibleClip = QRectF());
     QPixmap renderSceneToPixmap(FileNode* root);
+    bool liveFramesMatchCurrentView(const QSize& deviceSize) const;
+    QSize liveFrameDeviceSizeForViewport(qreal dpr) const;
+    void prepareLiveFrames(const QSize& deviceSize, qreal dpr);
+    void renderLiveStaticLayer();
+    void renderLiveDynamicLayer();
+    void renderLiveFramesFull(const QSize& deviceSize, qreal dpr);
+    void renderLiveFramesRegion(const QRect& dirty);
+    bool renderDeferredLiveStage();
+    void completeDeferredLiveRender();
+    // Fast wheel zoom (stretch/blend): the destination frame is rendered one
+    // layer per tick after the animation starts, and painted only once complete.
+    void renderCameraNextFrameStage();
+    void paintCameraTransition(QPainter& painter);
+    QPixmap composeLiveFrames() const;
+    QPixmap captureLiveFrame();
     QRectF zoomRectForAnchor(const QRectF& preferredRect, const QPointF& anchorPos) const;
     void startZoomAnimation(const QPixmap& previousFrame, const QRectF& sourceRect,
                             bool zoomIn, bool crossfadeOnly = false);
@@ -379,11 +415,17 @@ private:
     QPixmap m_layoutNextFrame;
     QPixmap m_cameraPreviousFrame;
     QPixmap m_cameraNextFrame;
+    int m_cameraNextPendingStages = 0;      // 2 = static layer pending, 1 = dynamic pending
+    int m_cameraFrameSemanticDepth = 0;     // depth both camera frames are rendered at
     QPixmap m_liveFrame;
     QPixmap m_liveStaticFrame;
     QPixmap m_liveDynamicFrame;
     QPixmap m_scrollBuffer;
     QSize   m_liveFrameDeviceSize;
+    QRegion m_sceneDirty;  // live-frame regions awaiting re-render
+    // Zoom-in defers the destination render so the animation starts at once:
+    // 2 = static layer still to render, 1 = dynamic layer still to render.
+    int m_deferredLiveStages = 0;
     FileNode* m_lastLiveRoot = nullptr;
     QPointF   m_lastLiveOrigin;
     qreal     m_lastLiveScale = 0.0;
@@ -435,6 +477,7 @@ private:
     QPointF m_pendingWheelAnchorScenePos;
     QPointF m_pendingWheelCursorPos;
     TreemapSettings m_settings;
+    RevealThresholds m_revealThresholds;   // derived from m_settings in applySettings()
     int m_activeSemanticDepth = TreemapSettings::defaults().baseVisibleDepth;
     FileNode* m_semanticFocus = nullptr;
     FileNode* m_semanticLiveRoot = nullptr;
@@ -590,8 +633,14 @@ private:
     struct SplitCacheEntry {
         qreal aspectRatio = 1.0;   // viewContent.width() / viewContent.height() at cache time
         std::vector<std::pair<FileNode*, QRectF>> rects;  // in [0, aspectRatio] x [0, 1] space
+        // Level of detail: children with normalized area below this were not
+        // stored (they were sub-pixel when computed). 0 means complete. When a
+        // larger view needs finer detail the entry is recomputed; the layout is
+        // deterministic so stored rects never change between levels.
+        qreal lodMinArea = 0.0;
     };
     mutable QHash<FileNode*, SplitCacheEntry> m_liveSplitCache;
+    mutable QHash<FileNode*, FilteredChildren> m_sortedChildrenCache;
     qreal m_currentRootLayoutAspectRatio = 1.0;
     bool m_syncingScrollBars = false;
     struct ScrollBarState {

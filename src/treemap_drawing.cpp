@@ -164,13 +164,23 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
                       const QRectF& rect,
                       qint64 totalSize,
                       std::vector<std::pair<FileNode*, QRectF>>& result,
-                      bool useApparentSizes)
+                      bool useApparentSizes,
+                      double minArea)
 {
     if (children.empty() || totalSize <= 0 || rect.width() <= 0.0 || rect.height() <= 0.0)
         return;
 
     const auto nodeSize = [useApparentSizes](const FileNode* node) -> qint64 {
         return useApparentSizes ? node->displaySize : node->size;
+    };
+    // Size below which a child's tile area is under minArea. Children are
+    // sorted descending, so once one is below it every later one is too.
+    const double areaPerUnit = (rect.width() * rect.height()) / static_cast<double>(totalSize);
+    const double minSize = minArea > 0.0 ? (minArea / areaPerUnit) : 0.0;
+    const auto emitTile = [&](FileNode* child, const QRectF& tile) {
+        if (minSize <= 0.0 || static_cast<double>(nodeSize(child)) >= minSize) {
+            result.emplace_back(child, tile);
+        }
     };
 
     QRectF rem = rect;
@@ -179,6 +189,9 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
     int i = 0;
 
     while (i < n && rem.width() > 0.0 && rem.height() > 0.0) {
+        if (minSize > 0.0 && static_cast<double>(nodeSize(children[i])) < minSize) {
+            break;  // every remaining child is below the emit threshold
+        }
         const double W = rem.width();
         const double H = rem.height();
         const double L = std::max(W, H);
@@ -219,7 +232,7 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
             for (int j = rowStart; j < i; ++j) {
                 const bool lastTile = (j + 1 == i);
                 const double tileH = lastTile ? (rem.y() + H - y) : (H * nodeSize(children[j]) / rowSum);
-                result.emplace_back(children[j], QRectF(rem.x(), y, stripW, tileH));
+                emitTile(children[j], QRectF(rem.x(), y, stripW, tileH));
                 y += tileH;
             }
             rem = QRectF(rem.x() + stripW, rem.y(), W - stripW, H);
@@ -230,7 +243,7 @@ void squarifiedLayout(const std::vector<FileNode*>& children,
             for (int j = rowStart; j < i; ++j) {
                 const bool lastTile = (j + 1 == i);
                 const double tileW = lastTile ? (rem.x() + W - x) : (W * nodeSize(children[j]) / rowSum);
-                result.emplace_back(children[j], QRectF(x, rem.y(), tileW, stripH));
+                emitTile(children[j], QRectF(x, rem.y(), tileW, stripH));
                 x += tileW;
             }
             rem = QRectF(rem.x(), rem.y() + stripH, W, H - stripH);

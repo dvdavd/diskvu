@@ -52,11 +52,16 @@ qreal leadingTextX(const QRectF& rect, const QString& text, const QFontMetrics& 
                    Qt::LayoutDirection direction);
 bool canPaintChildren(const QRectF& bounds, int depth, int maxVisibleDepth,
                       const TreemapSettings& settings);
+// minArea: children whose tile area (in rect units) falls below it are not
+// emitted, and layout stops once a completed row is followed only by such
+// children. Rows are still formed exactly as in the full layout, so the
+// emitted rects are identical to a full run. Children must be sorted by size.
 void squarifiedLayout(const std::vector<FileNode*>& children,
                       const QRectF& rect,
                       qint64 totalSize,
                       std::vector<std::pair<FileNode*, QRectF>>& result,
-                      bool useApparentSizes = false);
+                      bool useApparentSizes = false,
+                      double minArea = 0.0);
 QPointF snapCameraOriginToPixelGrid(const QPointF& origin, qreal scale, qreal pixelScale = 1.0);
 QColor contrastingTextColor(const QColor& background);
 QColor contrastingBorderColor(const QColor& background);
