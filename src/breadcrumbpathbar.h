@@ -28,6 +28,10 @@ public:
 
     void setPath(const QString& path);
     void setScanRootPath(const QString& path);
+    // Empty host = local scan; otherwise shows the ssh host as the scan source.
+    void setScanHost(const QString& host);
+    // The badge/menu is only shown when there is something to switch to.
+    void setScanSourceSwitchable(bool switchable);
     QString path() const;
     void setPlaceholderText(const QString& text);
     void setRecentPaths(const QStringList& recentPaths);
@@ -37,6 +41,7 @@ public:
 
 signals:
     void pathActivated(const QString& path, bool forceScan);
+    void scanSourceMenuRequested(const QPoint& globalPos);
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -66,4 +71,6 @@ private:
     QStringListModel* m_completionModel = nullptr;
     QCompleter* m_completer = nullptr;
     QToolButton* m_editButton = nullptr;
+    QToolButton* m_scanTypeBadge = nullptr;
+    bool m_scanSwitchable = false;
 };

@@ -2267,7 +2267,7 @@ bool TreemapWidget::nodeSupportsImagePreview(const FileNode* node) const
         return false;
     }
 
-    if (!m_settings.showThumbnails) {
+    if (!m_settings.showThumbnails || !m_localFilesAvailable) {
         return false;
     }
 
@@ -2327,7 +2327,7 @@ QSize TreemapWidget::imagePreviewBaseImageSize() const
 qreal TreemapWidget::imagePreviewBaseOpacity() const
 {
     FileNode* const previewNode = currentImagePreviewNode();
-    if (!m_settings.showThumbnails || !previewNode || m_imagePreviewPath.isEmpty() || !nodeSupportsImagePreview(previewNode)) {
+    if (!m_settings.showThumbnails || !m_localFilesAvailable || !previewNode || m_imagePreviewPath.isEmpty() || !nodeSupportsImagePreview(previewNode)) {
         return 0.0;
     }
 
@@ -5690,7 +5690,7 @@ void TreemapWidget::paintNode(QPainter& p, FileNode* node, int depth,
             thumbFullSize,
             thumbFullSize);
         const bool isVideoNode = supportedVideoExtKeys().contains(ColorUtils::packFileExt(node->name));
-        if (m_settings.showThumbnails && thumbnailRevealOpacity > 0.0
+        if (m_settings.showThumbnails && m_localFilesAvailable && thumbnailRevealOpacity > 0.0
                 && (supportedImageExtKeys().contains(ColorUtils::packFileExt(node->name))
                     || (isVideoNode && m_settings.showVideoThumbnails))) {
             const QString path = nodePath(node);

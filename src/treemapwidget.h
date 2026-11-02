@@ -134,6 +134,9 @@ public:
     void applySettings(const TreemapSettings& settings);
     void setScanInProgress(bool inProgress);
     void setScanPath(const QString& path);
+    // False while showing a tree whose paths live on another machine: node paths
+    // must not be used to read local files (thumbnails, image previews).
+    void setLocalFilesAvailable(bool available) { m_localFilesAvailable = available; }
     void setFilterParams(const FilterParams& params);
     void setSearchPattern(const QString& pattern);
     void setSizeFilter(qint64 minBytes, qint64 maxBytes);
@@ -508,6 +511,7 @@ private:
     QVariantAnimation m_launchProgressAnimation;
 
     bool m_contextMenuActive = false;
+    bool m_localFilesAvailable = true;
     QString m_imagePreviewPath;
     QRectF m_imagePreviewSourceRect;
     QImage m_imagePreviewImage;

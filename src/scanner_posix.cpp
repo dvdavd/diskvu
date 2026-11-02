@@ -235,7 +235,8 @@ void Scanner::partitionNode(Scanner::PartitionTask partition,
             } else {
                 dirTasks.push_back({child, childPath, childBranchHue, partition.rootDev, partition.depth + 1, childInMarkedBranch});
             }
-            dirFilesCount += 1;
+            // Directories are not counted here: subtreeFileCount counts files only,
+            // and the child accounts for its own contents once it has been scanned.
         } else {
             FileNode* child = arena.alloc();
             child->name = childName;

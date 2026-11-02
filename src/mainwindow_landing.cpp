@@ -745,6 +745,9 @@ void MainWindow::populateOpenLocationMenu(QMenu* menu)
                          QStyle::SP_DirOpenIcon),
         tr("Browse\u2026"));
     connect(browseAction, &QAction::triggered, this, &MainWindow::openDirectory);
+    if (m_scanRemoteAction) {
+        menu->addAction(m_scanRemoteAction);
+    }
 }
 
 void MainWindow::rebuildLandingLocationSections()
@@ -967,6 +970,84 @@ void MainWindow::rebuildLandingLocationSections()
         locLayout->addSpacing(4);
     }
 
+    if (!m_remoteProfiles.isEmpty()) {
+        auto* remoteHeader = new QLabel(tr("Remote Hosts"), locContainer);
+        remoteHeader->setObjectName(QStringLiteral("landingSectionHeader"));
+        remoteHeader->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        remoteHeader->setAlignment(landingTextAlignment(remoteHeader, Qt::AlignVCenter));
+        locLayout->addWidget(remoteHeader);
+
+        auto* remoteSection = new QWidget(locContainer);
+        remoteSection->setProperty("landingTileSection", true);
+        auto* remoteGrid = new QGridLayout(remoteSection);
+        remoteGrid->setContentsMargins(0, 0, 0, 0);
+        remoteGrid->setHorizontalSpacing(kLandingTileSpacing);
+        remoteGrid->setVerticalSpacing(kLandingTileSpacing);
+
+        const QStringList remoteIcons = {QStringLiteral("network-server"),
+                                         QStringLiteral("folder-remote"),
+                                         QStringLiteral("network-workgroup")};
+        for (int i = 0; i < m_remoteProfiles.size(); ++i) {
+            const RemoteProfile profile = m_remoteProfiles.at(i);
+            auto* tile = new LandingLocationTile(remoteSection);
+            tile->setObjectName(QStringLiteral("landingLocationTileShell"));
+            tile->setProperty("landingIndex", i);
+            tile->setFixedWidth(tileWidth);
+            auto* tileLayout = new QGridLayout(tile);
+            tileLayout->setContentsMargins(0, 0, 0, 0);
+            tileLayout->setSpacing(0);
+
+            auto* button = new QToolButton(tile);
+            button->setObjectName(QStringLiteral("landingLocationTile"));
+            button->setProperty("themeIconNames", remoteIcons);
+            button->setProperty("fallbackIcon", static_cast<int>(QStyle::SP_DriveNetIcon));
+            button->setIcon(landingThemeIcon(this, remoteIcons, QStyle::SP_DriveNetIcon));
+            button->setIconSize(QSize(tileIconSize, tileIconSize));
+            button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+            button->setText(profile.displayName());
+            button->setToolTip(tr("%1\n%2:%3").arg(profile.displayName(), profile.host, profile.path));
+            button->setFont(generalFont);
+            button->setFixedWidth(tileWidth);
+            button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
+            button->setMinimumHeight(button->sizeHint().height());
+            button->setCursor(Qt::PointingHandCursor);
+            button->setContextMenuPolicy(Qt::CustomContextMenu);
+            tile->setMainButton(button);
+            tileLayout->addWidget(button, 0, 0);
+
+            connect(button, &QToolButton::clicked, this, [this, profile] {
+                startScan(profile.path, true, false, profile);
+            });
+            connect(button, &QWidget::customContextMenuRequested, this, [this, button, i, profile](const QPoint& pos) {
+                QMenu menu(button);
+                button->setDown(true);
+                QAction* scanAction = menu.addAction(tr("Scan"));
+                QAction* editAction = menu.addAction(tr("Edit\u2026"));
+                menu.addSeparator();
+                QAction* removeAction = menu.addAction(tr("Remove"));
+                QAction* chosen = menu.exec(button->mapToGlobal(pos));
+                button->setDown(false);
+                if (!chosen) {
+                    return;
+                }
+                // Defer: editing/removing rebuilds the tiles this menu came from.
+                QTimer::singleShot(0, this, [this, chosen, scanAction, editAction, removeAction, i, profile] {
+                    if (chosen == scanAction) {
+                        startScan(profile.path, true, false, profile);
+                    } else if (chosen == editAction) {
+                        editRemoteProfile(i);
+                    } else if (chosen == removeAction) {
+                        removeRemoteProfile(i);
+                    }
+                });
+            });
+            remoteGrid->addWidget(tile, i / columns, i % columns, Qt::AlignLeft | Qt::AlignTop);
+        }
+        remoteGrid->setColumnStretch(columns, 1);
+        locLayout->addWidget(remoteSection);
+        locLayout->addSpacing(4);
+    }
+
     auto* browseHeader = new QLabel(tr("Browse"), locContainer);
     browseHeader->setObjectName(QStringLiteral("landingSectionHeader"));
     browseHeader->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -996,6 +1077,26 @@ void MainWindow::rebuildLandingLocationSections()
     browseButton->setCursor(Qt::PointingHandCursor);
     connect(browseButton, &QToolButton::clicked, this, &MainWindow::openDirectory);
     browseRow->addWidget(browseButton, 0, Qt::AlignLeft | Qt::AlignTop);
+
+    auto* addRemoteButton = new QToolButton(browseSection);
+    addRemoteButton->setObjectName(QStringLiteral("landingLocationTile"));
+    const QStringList addRemoteIcons = {QStringLiteral("network-server"),
+                                        QStringLiteral("folder-remote"),
+                                        QStringLiteral("network-workgroup")};
+    addRemoteButton->setProperty("themeIconNames", addRemoteIcons);
+    addRemoteButton->setProperty("fallbackIcon", static_cast<int>(QStyle::SP_DriveNetIcon));
+    addRemoteButton->setIcon(landingThemeIcon(this, addRemoteIcons, QStyle::SP_DriveNetIcon));
+    addRemoteButton->setIconSize(QSize(tileIconSize, tileIconSize));
+    addRemoteButton->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    addRemoteButton->setText(tr("Add Remote\u2026"));
+    addRemoteButton->setToolTip(tr("Add a remote host to scan over ssh"));
+    addRemoteButton->setFont(generalFont);
+    addRemoteButton->setFixedWidth(tileWidth);
+    addRemoteButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
+    addRemoteButton->setMinimumHeight(addRemoteButton->sizeHint().height());
+    addRemoteButton->setCursor(Qt::PointingHandCursor);
+    connect(addRemoteButton, &QToolButton::clicked, this, &MainWindow::addRemoteHost);
+    browseRow->addWidget(addRemoteButton, 0, Qt::AlignLeft | Qt::AlignTop);
     browseRow->addStretch(1);
     locLayout->addWidget(browseSection);
     locLayout->addStretch(1);

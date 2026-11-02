@@ -46,6 +46,29 @@ class TestScanner : public QObject {
     Q_OBJECT
 
 private slots:
+    // Regression: directories handled in the skeleton (partition) pass used to be
+    // added to their parent's file count as if they were files.
+    void scan_fileCountExcludesDirectories()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        for (int i = 0; i < 40; ++i) {
+            const QString sub = QStringLiteral("%1/many/d%2").arg(dir.path()).arg(i);
+            QVERIFY(QDir().mkpath(sub));
+            QVERIFY(writeFile(sub + "/f.dat", 10));
+        }
+        QVERIFY(writeFile(dir.path() + "/top.dat", 5));
+        QDir().mkpath(dir.path() + "/empty/nested");
+
+        const ScanResult result = Scanner::scan(dir.path());
+        QVERIFY(result.root != nullptr);
+        FileNode* many = findByName(result.root, QStringLiteral("many"));
+        QVERIFY(many != nullptr);
+        QCOMPARE(many->subtreeFileCount, 40);
+        QCOMPARE(result.root->subtreeFileCount, 41);
+        QCOMPARE(result.fileCount, qint64(41));
+    }
+
     // ── basic results ─────────────────────────────────────────────────────────
 
     void scan_emptyDirectory_rootIsNonNull()

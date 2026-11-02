@@ -10,6 +10,8 @@
 #include "mainwindow_utils.h"
 #include "nodepropertiesdialog.h"
 #include "scanner.h"
+#include "remotescanner.h"
+#include "remotehostdialog.h"
 #include "settingsdialog.h"
 
 #include <QAbstractItemView>
@@ -520,6 +522,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_typeLegendPanelWidth = store.value("treemap/typeLegendPanelWidth", m_typeLegendPanelWidth).toInt();
     m_permissionErrorPanelWidth = store.value("treemap/permissionPanelWidth", m_permissionErrorPanelWidth).toInt();
     loadRecentPaths(store);
+    loadRemoteProfiles();
     loadFavouritePaths(store);
 
     setWindowTitle(QStringLiteral("Diskvu"));
@@ -557,6 +560,12 @@ void MainWindow::setupToolbar(QSettings& store)
     setActionTooltip(m_scanCustomAction, tr("Choose a new folder to scan"));
     addAction(m_scanCustomAction);
     connect(m_scanCustomAction, &QAction::triggered, this, &MainWindow::openDirectory);
+
+    m_scanRemoteAction = new QAction(tr("Scan Remote Host\u2026"), this);
+    m_scanRemoteAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+O")));
+    setActionTooltip(m_scanRemoteAction, tr("Scan a folder on another machine over ssh"));
+    addAction(m_scanRemoteAction);
+    connect(m_scanRemoteAction, &QAction::triggered, this, &MainWindow::openRemoteHost);
 
     m_homeAction = m_toolbar->addAction(
         toolbarIcon({"user-home"},
@@ -764,7 +773,40 @@ void MainWindow::setupToolbar(QSettings& store)
     m_pathBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_pathBar->setPlaceholderText(tr("Enter a directory path"));
     m_pathBar->setRecentPaths(m_recentPaths);
+    updateScanSourceBadge();
     auto* dirModel = m_pathBar->completionModel();
+    connect(m_pathBar, &BreadcrumbPathBar::scanSourceMenuRequested, this, [this](const QPoint& pos) {
+        QMenu menu(this);
+        QAction* localAction = menu.addAction(tr("Local\u2026"));
+        localAction->setCheckable(true);
+        localAction->setChecked(!isRemoteScan());
+        bool currentIsSaved = false;
+        for (const RemoteProfile& profile : std::as_const(m_remoteProfiles)) {
+            currentIsSaved = currentIsSaved || m_scanRemote.sameTarget(profile);
+        }
+        const bool showUnsaved = isRemoteScan() && !currentIsSaved;
+        if (!m_remoteProfiles.isEmpty() || showUnsaved) {
+            menu.addSeparator();
+        }
+        if (showUnsaved) {
+            // Current remote scan that was never saved: list it so the menu shows where we are.
+            QAction* action = menu.addAction(tr("%1 (not saved)").arg(m_scanRemote.displayName()));
+            action->setCheckable(true);
+            action->setChecked(true);
+            action->setToolTip(QStringLiteral("%1:%2").arg(m_scanRemote.host, m_scanRemote.path));
+        }
+        for (const RemoteProfile& profile : std::as_const(m_remoteProfiles)) {
+            QAction* action = menu.addAction(profile.displayName());
+            action->setCheckable(true);
+            action->setChecked(isRemoteScan() && m_scanRemote.sameTarget(profile));
+            action->setToolTip(QStringLiteral("%1:%2").arg(profile.host, profile.path));
+            connect(action, &QAction::triggered, this, [this, profile] {
+                startScan(profile.path, true, false, profile);
+            });
+        }
+        connect(localAction, &QAction::triggered, this, &MainWindow::openDirectory);
+        menu.exec(pos);
+    });
     connect(m_pathBar, &BreadcrumbPathBar::pathActivated, this, [this](const QString& path, bool forceScan) {
         activatePath(path, forceScan);
     });
@@ -844,6 +886,7 @@ void MainWindow::setupToolbar(QSettings& store)
     auto* toolbarMenu = new QMenu(this);
     toolbarMenu->addAction(m_homeAction);
     toolbarMenu->addAction(m_scanCustomAction);
+    toolbarMenu->addAction(m_scanRemoteAction);
     toolbarMenu->addSeparator();
     toolbarMenu->addAction(m_backAction);
     toolbarMenu->addAction(m_upAction);
@@ -944,6 +987,7 @@ void MainWindow::setupToolbar(QSettings& store)
 
     auto* macFileMenu = mb->addMenu(tr("File"));
     macFileMenu->addAction(m_scanCustomAction);
+    macFileMenu->addAction(m_scanRemoteAction);
     macFileMenu->addAction(m_homeAction);
     macFileMenu->addSeparator();
     macFileMenu->addAction(m_settingsAction);
@@ -1845,6 +1889,107 @@ void MainWindow::openDirectory()
     startScan(dir);
 }
 
+void MainWindow::openRemoteHost()
+{
+    RemoteHostDialog dialog(RemoteProfile::defaultsFromSettings(), m_settings,
+                            RemoteHostDialog::Mode::ScanOnly, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const RemoteProfile profile = dialog.profile();
+    if (dialog.saveRequested()) {
+        storeRemoteProfile(profile);
+    }
+    if (dialog.scanRequested()) {
+        startScan(profile.path, true, false, profile);
+    }
+}
+
+void MainWindow::addRemoteHost()
+{
+    RemoteHostDialog dialog(RemoteProfile::defaultsFromSettings(), m_settings,
+                            RemoteHostDialog::Mode::Add, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const RemoteProfile profile = dialog.profile();
+    storeRemoteProfile(profile);
+    if (dialog.scanRequested()) {
+        startScan(profile.path, true, false, profile);
+    }
+}
+
+void MainWindow::editRemoteProfile(int index)
+{
+    if (index < 0 || index >= m_remoteProfiles.size()) {
+        return;
+    }
+    RemoteHostDialog dialog(m_remoteProfiles.at(index), m_settings,
+                            RemoteHostDialog::Mode::Edit, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const RemoteProfile profile = dialog.profile();
+    storeRemoteProfile(profile, index);
+    if (dialog.scanRequested()) {
+        startScan(profile.path, true, false, profile);
+    }
+}
+
+void MainWindow::removeRemoteProfile(int index)
+{
+    if (index < 0 || index >= m_remoteProfiles.size()) {
+        return;
+    }
+    m_remoteProfiles.removeAt(index);
+    saveRemoteProfiles();
+    rebuildLandingLocationSections();
+}
+
+void MainWindow::loadRemoteProfiles()
+{
+    QSettings store;
+    m_remoteProfiles = RemoteProfile::loadAll(store);
+}
+
+void MainWindow::updateScanSourceBadge()
+{
+    if (!m_pathBar) {
+        return;
+    }
+    m_pathBar->setScanHost(m_scanHost);
+    // Hidden unless there is a remote to switch to (or one is currently open).
+    m_pathBar->setScanSourceSwitchable(!m_remoteProfiles.isEmpty() || isRemoteScan());
+    m_pathBar->setScanHost(m_scanHost);
+}
+
+void MainWindow::saveRemoteProfiles()
+{
+    QSettings store;
+    RemoteProfile::saveAll(store, m_remoteProfiles);
+    updateScanSourceBadge();
+}
+
+void MainWindow::storeRemoteProfile(const RemoteProfile& profile, int replaceIndex)
+{
+    if (replaceIndex < 0 || replaceIndex >= m_remoteProfiles.size()) {
+        replaceIndex = -1;
+        for (int i = 0; i < m_remoteProfiles.size(); ++i) {
+            if (m_remoteProfiles.at(i).sameTarget(profile)) {
+                replaceIndex = i;
+                break;
+            }
+        }
+    }
+    if (replaceIndex >= 0) {
+        m_remoteProfiles[replaceIndex] = profile;
+    } else {
+        m_remoteProfiles.push_back(profile);
+    }
+    saveRemoteProfiles();
+    rebuildLandingLocationSections();
+}
+
 void MainWindow::refreshCurrentScan()
 {
     if (m_scanInProgress || m_incrementalRefreshInProgress || m_postProcessInProgress) {
@@ -1857,6 +2002,12 @@ void MainWindow::refreshCurrentScan()
         : m_currentPath.trimmed();
     if (path.isEmpty()) {
         statusBar()->showMessage(tr("No scan to refresh"));
+        return;
+    }
+
+    if (isRemoteScan()) {
+        // Incremental refresh and filesystem watching work on local paths only.
+        startScan(QDir(path).absolutePath(), true, false, m_scanRemote);
         return;
     }
 
@@ -1937,6 +2088,27 @@ void MainWindow::activatePath(const QString& path, bool forceScan)
         return;
     }
 
+    if (isRemoteScan()) {
+        // Paths refer to the remote machine, so they cannot be validated here.
+        if (!enteredPath.startsWith(QLatin1Char('/'))) {
+            statusBar()->showMessage(
+                tr("Enter an absolute path on %1").arg(m_scanHost), 4000);
+            return;
+        }
+        const QString remotePath = QDir::cleanPath(enteredPath);
+        FileNode* remoteRoot = (!m_scanInProgress || m_backgroundRefreshInProgress)
+            ? m_scanResult.root
+            : nullptr;
+        if (!forceScan && pathIsWithinRoot(remotePath, m_currentPath) && remoteRoot) {
+            if (FileNode* node = findNodeByPath(remoteRoot, remotePath)) {
+                navigateTo(node, true);
+                return;
+            }
+        }
+        startScan(remotePath, forceScan, false, m_scanRemote);
+        return;
+    }
+
     const QString absolutePath = QDir(enteredPath).absolutePath();
     const QFileInfo targetInfo(absolutePath);
     if (!targetInfo.exists() || !targetInfo.isDir()) {
@@ -1977,15 +2149,17 @@ bool MainWindow::startPendingScanRequestIfNeeded()
     const QString pendingScanPath = m_pendingScanPath;
     const bool pendingScanForceRescan = m_pendingScanForceRescan;
     const bool pendingScanBackgroundRefresh = m_pendingScanBackgroundRefresh;
+    const RemoteProfile pendingScanRemote = m_pendingScanRemote;
     m_hasPendingScanRequest = false;
     m_pendingScanPath.clear();
+    m_pendingScanRemote = RemoteProfile();
     m_pendingScanForceRescan = false;
     m_pendingScanBackgroundRefresh = false;
-    startScan(pendingScanPath, pendingScanForceRescan, pendingScanBackgroundRefresh);
+    startScan(pendingScanPath, pendingScanForceRescan, pendingScanBackgroundRefresh, pendingScanRemote);
     return true;
 }
 
-void MainWindow::startScan(const QString& dir, bool forceRescan, bool backgroundRefresh)
+void MainWindow::startScan(const QString& dir, bool forceRescan, bool backgroundRefresh, const RemoteProfile& remote)
 {
     const QString normalizedDir = QFileInfo(dir).absoluteFilePath();
     if (m_closeRequested) {
@@ -1998,6 +2172,7 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
 
     if (m_incrementalRefreshInProgress || m_postProcessInProgress) {
         m_pendingScanPath = normalizedDir;
+        m_pendingScanRemote = remote;
         m_pendingScanForceRescan = true;
         m_pendingScanBackgroundRefresh = backgroundRefresh;
         m_hasPendingScanRequest = true;
@@ -2009,6 +2184,7 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
 
     if (m_scanInProgress) {
         m_pendingScanPath = normalizedDir;
+        m_pendingScanRemote = remote;
         m_pendingScanForceRescan = true;
         m_pendingScanBackgroundRefresh = backgroundRefresh;
         m_hasPendingScanRequest = true;
@@ -2025,6 +2201,14 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
     }
 
     m_currentPath = normalizedDir;
+    const QString host = remote.host;
+    m_scanHost = host;
+    m_scanRemote = remote;
+    updateScanSourceBadge();
+    m_remoteScanError = std::make_shared<QString>();
+    if (m_treemapWidget) {
+        m_treemapWidget->setLocalFilesAvailable(host.isEmpty());
+    }
     m_scanInProgress = true;
     m_scanStartTime.start();
     m_scanCancelled = false;
@@ -2071,7 +2255,9 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
     m_showPermissionPanel = false;
     rebuildTreemapSplitterLayout();
     syncPathCombo(normalizedDir);
-    updateRecentPaths(normalizedDir);
+    if (host.isEmpty()) {
+        updateRecentPaths(normalizedDir);
+    }
     if (!backgroundRefresh) {
         m_history.clear();
         statusBar()->showMessage(tr("Scanning..."));
@@ -2093,9 +2279,13 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
     const std::shared_ptr<std::atomic_bool> previewSlotOpen = m_scanPreviewSlotOpen;
     const std::shared_ptr<ScanCallbackBridge> bridge = m_scanCallbackBridge;
     const int scanPreviewMode = m_settings.scanPreviewMode;
-    const TreemapSettings settings = m_settings;
+    // Remote profiles may override the global exclusions / same-filesystem flag.
+    const TreemapSettings settings = remote.isRemote() ? remote.effectiveSettings(m_settings) : m_settings;
     const Scanner::ErrorCallback errorCallback = makeScanErrorCallback();
-    QFuture<ScanResult> future = QtConcurrent::run([bridge, scanPreviewMode, settings, normalizedDir, backgroundRefresh, cancelToken, previewSlotOpen, errorCallback]() {
+    const std::shared_ptr<QString> remoteError = m_remoteScanError;
+    const QString agentCommand = remote.agentCommand;
+    const bool compressRemote = remote.compress;
+    QFuture<ScanResult> future = QtConcurrent::run([bridge, scanPreviewMode, settings, normalizedDir, backgroundRefresh, cancelToken, previewSlotOpen, errorCallback, host, remoteError, agentCommand, compressRemote]() {
         const bool wantPreview = !backgroundRefresh && scanPreviewMode != TreemapSettings::ScanPreviewNone;
         const Scanner::ProgressCallback progressCallback = wantPreview
             ? Scanner::ProgressCallback([bridge](ScanResult snapshot) {
@@ -2145,9 +2335,24 @@ void MainWindow::startScan(const QString& dir, bool forceRescan, bool background
         if (previewSlotOpen) {
             previewSlotOpen->store(false, std::memory_order_relaxed);
         }
-        ScanResult result = Scanner::scan(normalizedDir, settings, progressCallback,
-                                          progressReadyCallback, activityCallback,
-                                          errorCallback, cancelToken);
+        ScanResult result;
+        if (host.isEmpty()) {
+            result = Scanner::scan(normalizedDir, settings, progressCallback,
+                                   progressReadyCallback, activityCallback,
+                                   errorCallback, cancelToken);
+        } else {
+            QString error;
+            const RemoteScanner::Command command =
+                RemoteScanner::sshCommand(host, normalizedDir, agentCommand, settings, &error, compressRemote);
+            if (!command.program.isEmpty()) {
+                result = RemoteScanner::scan(command, settings, progressCallback,
+                                             progressReadyCallback, activityCallback,
+                                             errorCallback, cancelToken, &error);
+            }
+            if (remoteError) {
+                *remoteError = error;
+            }
+        }
         sortChildrenBySizeRecursive(result.root);
         ColorUtils::assignColors(result.root, settings);
         return result;
@@ -2727,6 +2932,7 @@ void MainWindow::onScanFinished()
         const QString pendingScanPath = m_pendingScanPath;
         const bool pendingScanForceRescan = m_pendingScanForceRescan;
         const bool pendingScanBackgroundRefresh = m_pendingScanBackgroundRefresh;
+        const RemoteProfile pendingScanRemote = m_pendingScanRemote;
         m_scanCancelled = false;
         m_scanInProgress = false;
         m_backgroundRefreshInProgress = false;
@@ -2757,7 +2963,7 @@ void MainWindow::onScanFinished()
             return;
         }
         if (hasPendingScanRequest) {
-            startScan(pendingScanPath, pendingScanForceRescan, pendingScanBackgroundRefresh);
+            startScan(pendingScanPath, pendingScanForceRescan, pendingScanBackgroundRefresh, pendingScanRemote);
             return;
         }
         return;
@@ -2793,6 +2999,11 @@ void MainWindow::onScanFinished()
         m_treemapWidget->setWheelZoomEnabled(true);
         m_treemapWidget->setScanInProgress(false);
         statusBar()->showMessage(backgroundRefresh ? tr("Refresh failed") : tr("Scan failed"));
+        if (!m_closeRequested && m_remoteScanError && !m_remoteScanError->isEmpty()) {
+            QMessageBox::warning(this, tr("Remote scan failed"),
+                                 tr("Could not scan %1 on %2:\n\n%3")
+                                     .arg(m_currentPath, m_scanHost, *m_remoteScanError));
+        }
         if (m_closeRequested) {
             maybeQuitAfterClose();
         }
@@ -2930,6 +3141,10 @@ void MainWindow::onNodeOpenFile(FileNode* node)
 {
     if (isTreeInteractionBlocked() || !node || node->isDirectory() || node->isVirtual())
         return;
+    if (isRemoteScan()) {
+        statusBar()->showMessage(tr("Files on %1 cannot be opened from here").arg(m_scanHost), 3000);
+        return;
+    }
 
     const QString path = node->computePath();
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
@@ -3208,6 +3423,11 @@ void MainWindow::syncColorThemeWithSystem(bool darkMode, bool persist)
 
 void MainWindow::launchIncrementalRefresh(const QString& refreshPath)
 {
+    if (isRemoteScan()) {
+        // Would rescan the local path of the same name and splice it into the remote tree.
+        return;
+    }
+
     m_activeRefreshPath = refreshPath;
 
     m_incrementalRefreshInProgress = true;
@@ -3574,8 +3794,20 @@ void MainWindow::onNodeContextMenuRequested(FileNode* node, QPoint globalPos)
             QStyle::SP_FileDialogContentsView));
     }
 
+    if (isRemoteScan()) {
+        // Every one of these would act on the *local* path of the same name.
+        const QString remoteTip = tr("Not available for remote scans");
+        for (QAction* local : {openAction, revealAction, propertiesAction, previewAction,
+                               refreshAction, deleteAction}) {
+            if (local) {
+                local->setEnabled(false);
+                local->setToolTip(remoteTip);
+            }
+        }
+    }
+
     if (deleteAction) {
-        deleteAction->setEnabled(canDelete && parentWritable);
+        deleteAction->setEnabled(canDelete && parentWritable && !isRemoteScan());
         if (!parentWritable) {
             deleteAction->setToolTip(tr("You do not have permission to delete this item"));
         } else if (!canDelete) {
@@ -4317,6 +4549,7 @@ void MainWindow::syncPathCombo(const QString& path)
     }
 
     m_pathBar->blockSignals(true);
+    updateScanSourceBadge();
     m_pathBar->setScanRootPath(m_currentPath);
     m_pathBar->setPath(path);
     m_pathBar->blockSignals(false);

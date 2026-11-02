@@ -12,6 +12,7 @@ Diskvu is a Qt-based Linux desktop application for exploring disk usage as an in
 - Optional image and video thumbnail generation
 - File-type list with aggregate size and item counts
 - Customisable themes, file colors, and automatic dark mode switching
+- Remote scanning agent to browse remote machines via SSH
 
 ## Requirements
 
@@ -56,7 +57,7 @@ Configure and build with CMake:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target diskvu -j$(nproc)
+cmake --build build -j$(nproc)
 ```
 
 On **macOS**, point CMake at your Qt6 installation first:
@@ -94,4 +95,38 @@ Uninstall with:
 
 ```bash
 sudo cmake --build build --target uninstall
+```
+
+## Remote Scanning
+
+Remote scanning via SSH is possible using `diskvu-agent`. Install the agent
+on a another system and Diskvu will be able to quickly scan and build a treemap
+for it.
+
+When adding a remote connection, you'll be given the option to automatically
+install the agent. You can also copy it manually and specify the path if needed.
+
+### Native Builds
+
+By default, the normal cmake build command will create a native diskvu-agent for
+the current CPU architecture. If these builds don't work (e.g. on an older CPU),
+try the static builds below.
+
+### Static Builds
+
+Scripts are provided to create a static musl build if needed.
+
+```bash
+scripts/build-agent-static.sh                  # this machine's architecture
+ARCH=aarch64 scripts/build-agent-static.sh     # arm64 (x86-64 host needs qemu-user-static + binfmt)
+ARCH=x86_64 scripts/build-agent-static.sh      # x86-64
+ENGINE=podman scripts/build-agent-static.sh    # pick the container engine
+```
+
+To bundle the agents so the automatic install feature works, specify the directory:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDISKVU_AGENT_BINARIES_DIR=build/agents
+cmake --build build -j$(nproc)
+cmake --install build --prefix ~/.local    # agents go to share/diskvu/agents
 ```

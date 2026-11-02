@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(diskvu VERSION 0.9.28 LANGUAGES CXX)
+project(diskvu VERSION 0.9.29 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,12 @@ include(GNUInstallDirs)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent Svg LinguistTools)
 find_package(Qt6 QUIET COMPONENTS DBus)
+
+# Optional: zstd compression of remote-scan streams (client and agent).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ZSTD IMPORTED_TARGET libzstd)
+endif()
 
 qt_standard_project_setup()
 
@@ -44,6 +50,14 @@ qt_add_executable(diskvu
     src/scanner.h
     src/scanner.cpp
     ${SCANNER_BACKEND_SRC}
+    src/remotescanner.h
+    src/remotescanner.cpp
+    src/remoteprofile.h
+    src/remoteprofile.cpp
+    src/remoteagentinstaller.h
+    src/remoteagentinstaller.cpp
+    src/remotehostdialog.h
+    src/remotehostdialog.cpp
     src/thumbnailprovider.h
     ${THUMBNAIL_SRC}
     src/filenode.h
@@ -144,6 +158,11 @@ if (TARGET Qt6::DBus)
     target_compile_definitions(diskvu PRIVATE DISKVU_HAS_QT_DBUS)
 endif()
 
+if (TARGET PkgConfig::ZSTD)
+    target_link_libraries(diskvu PRIVATE PkgConfig::ZSTD)
+    target_compile_definitions(diskvu PRIVATE DISKVU_HAVE_ZSTD)
+endif()
+
 if (APPLE)
     target_link_libraries(diskvu PRIVATE
         "-framework QuickLookThumbnailing"
@@ -177,6 +196,34 @@ target_link_libraries(scanner_bench PRIVATE
 
 if (WIN32)
     target_link_libraries(scanner_bench PRIVATE kernel32)
+endif()
+
+# ── diskvu-agent ──────────────────────────────────────────────────────────────
+# Qt-free scanner that runs on the machine owning the disk (launched over ssh
+# by diskvu). Builds on its own: copy just this binary to a remote server.
+if(UNIX)
+    find_package(Threads REQUIRED)
+    add_executable(diskvu-agent agent/diskvu-agent.cpp agent/protocol.h)
+    target_compile_features(diskvu-agent PRIVATE cxx_std_17)
+    target_link_libraries(diskvu-agent PRIVATE Threads::Threads)
+    if(TARGET PkgConfig::ZSTD)
+        target_link_libraries(diskvu-agent PRIVATE PkgConfig::ZSTD)
+        target_compile_definitions(diskvu-agent PRIVATE DVA_HAVE_ZSTD)
+    endif()
+    target_compile_definitions(diskvu-agent PRIVATE DVA_VERSION="${PROJECT_VERSION}")
+    install(TARGETS diskvu-agent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+# Prebuilt static agents that "Install agent on host" copies to remote
+# servers. Point this at a directory holding diskvu-agent-<os>-<arch> files
+# (see scripts/build-agent-static.sh); they are installed next to the app.
+set(DISKVU_AGENT_BINARIES_DIR "" CACHE PATH
+    "Directory with prebuilt diskvu-agent-<os>-<arch> binaries to bundle")
+if(DISKVU_AGENT_BINARIES_DIR AND IS_DIRECTORY "${DISKVU_AGENT_BINARIES_DIR}")
+    install(DIRECTORY "${DISKVU_AGENT_BINARIES_DIR}/"
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/diskvu/agents
+        USE_SOURCE_PERMISSIONS
+        FILES_MATCHING PATTERN "diskvu-agent-*")
 endif()
 
 install(TARGETS diskvu
@@ -276,6 +323,14 @@ diskvu_add_test(test_settings
     ${DISKVU_SETTINGS_SRC}
 )
 
+diskvu_add_test(test_remoteprofile
+    tests/test_remoteprofile.cpp
+    src/remoteprofile.h
+    src/remoteprofile.cpp
+    ${DISKVU_FILESYSTEMUTILS_SRC}
+    ${DISKVU_SETTINGS_SRC}
+)
+
 diskvu_add_test(test_drawing
     tests/test_drawing.cpp
     ${DISKVU_FILESYSTEMUTILS_SRC}
@@ -367,6 +422,41 @@ diskvu_add_test(test_subtree_refresh_paths
     ${SCANNER_BACKEND_SRC}
     ${DISKVU_WIDGET_SRC}
 )
+
+diskvu_add_test(test_remoteagentinstaller
+    tests/test_remoteagentinstaller.cpp
+    ${DISKVU_FILESYSTEMUTILS_SRC}
+    src/scanner.h
+    src/scanner.cpp
+    ${SCANNER_BACKEND_SRC}
+    src/remotescanner.h
+    src/remotescanner.cpp
+    src/remoteagentinstaller.h
+    src/remoteagentinstaller.cpp
+    ${DISKVU_SETTINGS_SRC}
+    ${DISKVU_COLORUTILS_SRC}
+)
+
+if(TARGET diskvu-agent)
+    diskvu_add_test(test_remotescanner
+        tests/test_remotescanner.cpp
+        ${DISKVU_FILESYSTEMUTILS_SRC}
+        src/scanner.h
+        src/scanner.cpp
+        ${SCANNER_BACKEND_SRC}
+        src/remotescanner.h
+        src/remotescanner.cpp
+        ${DISKVU_SETTINGS_SRC}
+        ${DISKVU_COLORUTILS_SRC}
+    )
+    add_dependencies(test_remotescanner diskvu-agent)
+    if(TARGET PkgConfig::ZSTD)
+        target_link_libraries(test_remotescanner PRIVATE PkgConfig::ZSTD)
+        target_compile_definitions(test_remotescanner PRIVATE DISKVU_HAVE_ZSTD)
+    endif()
+    target_compile_definitions(test_remotescanner PRIVATE
+        DISKVU_AGENT_PATH="$<TARGET_FILE:diskvu-agent>")
+endif()
 
 endif() # BUILD_TESTING
 

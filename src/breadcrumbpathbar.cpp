@@ -76,6 +76,19 @@ BreadcrumbPathBar::BreadcrumbPathBar(QWidget* parent)
     m_modeLayout->addWidget(m_breadcrumbView);
     m_modeLayout->addWidget(m_lineEdit);
 
+    m_scanTypeBadge = new QToolButton(m_fieldFrame);
+    m_scanTypeBadge->setCursor(Qt::PointingHandCursor);
+    connect(m_scanTypeBadge, &QToolButton::clicked, this, [this]() {
+        emit scanSourceMenuRequested(m_scanTypeBadge->mapToGlobal(QPoint(0, m_scanTypeBadge->height())));
+    });
+    m_scanTypeBadge->setObjectName(QStringLiteral("scanTypeBadge"));
+    m_scanTypeBadge->setFont(generalFont);
+    m_scanTypeBadge->hide();
+    fieldLayout->addWidget(m_scanTypeBadge);
+    m_scanTypeBadge->setProperty("remote", false);
+    m_scanTypeBadge->setText(tr("Local"));
+    m_scanTypeBadge->setStyleSheet(QString());
+
     auto* modeHost = new QWidget(m_fieldFrame);
     modeHost->setLayout(m_modeLayout);
     fieldLayout->addWidget(modeHost, 1);
@@ -160,6 +173,29 @@ void BreadcrumbPathBar::setScanRootPath(const QString& path)
 
     m_scanRootPath = normalized;
     rebuildCrumbs();
+}
+
+void BreadcrumbPathBar::setScanHost(const QString& host)
+{
+    if (!m_scanTypeBadge) {
+        return;
+    }
+    const bool remote = !host.isEmpty();
+    m_scanTypeBadge->setText(remote ? host : tr("Local"));
+    m_scanTypeBadge->setProperty("remote", remote);
+    m_scanTypeBadge->setToolTip(remote ? tr("Remote scan on %1 (click to switch)").arg(host)
+                                       : tr("Local scan (click to switch)"));
+    m_scanTypeBadge->style()->unpolish(m_scanTypeBadge);
+    m_scanTypeBadge->style()->polish(m_scanTypeBadge);
+    m_scanTypeBadge->setVisible(m_scanSwitchable);
+}
+
+void BreadcrumbPathBar::setScanSourceSwitchable(bool switchable)
+{
+    m_scanSwitchable = switchable;
+    if (m_scanTypeBadge) {
+        m_scanTypeBadge->setVisible(switchable);
+    }
 }
 
 QString BreadcrumbPathBar::path() const
@@ -263,6 +299,18 @@ void BreadcrumbPathBar::refreshChromeStyles()
         "}"
         "QLabel {"
         "  background: transparent;"
+        "}"
+        "QToolButton#scanTypeBadge {"
+        "  margin-right: 6px;"
+        "  border: 1px solid palette(mid);"
+        "  border-radius: 4px;"
+        "  padding: 0 6px 1px 6px;"
+        "  color: palette(window-text);"
+        "}"
+        "QToolButton#scanTypeBadge:hover { background: palette(button); }"
+        "QToolButton#scanTypeBadge[remote=\"true\"] {"
+        "  border-color: palette(highlight);"
+        "  color: palette(highlight);"
         "}"
     ).arg(borderColor.name(QColor::HexArgb)));
 

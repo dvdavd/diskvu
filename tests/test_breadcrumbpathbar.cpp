@@ -17,7 +17,12 @@ private slots:
         bar.show();
         QApplication::processEvents();
 
-        auto* editButton = bar.findChild<QToolButton*>();
+        QToolButton* editButton = nullptr;
+        for (auto* button : bar.findChildren<QToolButton*>()) {
+            if (button->objectName() != QStringLiteral("scanTypeBadge")) {
+                editButton = button;
+            }
+        }
         QVERIFY(editButton != nullptr);
 
         QTemporaryDir tempDir;
@@ -42,7 +47,12 @@ private slots:
         bar.show();
         QApplication::processEvents();
 
-        auto* editButton = bar.findChild<QToolButton*>();
+        QToolButton* editButton = nullptr;
+        for (auto* button : bar.findChildren<QToolButton*>()) {
+            if (button->objectName() != QStringLiteral("scanTypeBadge")) {
+                editButton = button;
+            }
+        }
         QVERIFY(editButton != nullptr);
 
         QTemporaryDir tempDir;

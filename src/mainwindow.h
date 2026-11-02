@@ -4,6 +4,7 @@
 
 #include "mainwindow_types.h"
 #include "treemapwidget.h"
+#include "remoteprofile.h"
 #include "treemapsettings.h"
 
 #include <QElapsedTimer>
@@ -105,7 +106,21 @@ private:
     void refreshTypeLegendAsync(FileNode* root);
     void scheduleTreeMaintenance();
     void activatePath(const QString& path, bool forceScan);
-    void startScan(const QString& dir, bool forceRescan = false, bool backgroundRefresh = false);
+    // `remote` without a host: scan a local directory. Otherwise `dir` is a
+    // path on that ssh host and the scan runs there through diskvu-agent with
+    // the profile's options.
+    void startScan(const QString& dir, bool forceRescan = false, bool backgroundRefresh = false,
+                   const RemoteProfile& remote = RemoteProfile());
+    void openRemoteHost();                // menu: one-off scan, optionally saved
+    void addRemoteHost();                 // landing page: add to saved hosts
+    void editRemoteProfile(int index);
+    void removeRemoteProfile(int index);
+    void loadRemoteProfiles();
+    void updateScanSourceBadge();
+    void saveRemoteProfiles();
+    // Adds or replaces (matched by host+path, or `replaceIndex`) a saved profile.
+    void storeRemoteProfile(const RemoteProfile& profile, int replaceIndex = -1);
+    bool isRemoteScan() const { return !m_scanHost.isEmpty(); }
     void navigateTo(FileNode* node, bool pushHistory,
                     const QPointF& anchorPos = QPointF(), bool useAnchor = false);
     void updateWindowTitle();
@@ -182,6 +197,7 @@ private:
     QLabel* m_completedTotalStatusLabel = nullptr;
     QLabel* m_completedFreeStatusLabel = nullptr;
     QAction* m_scanCustomAction = nullptr;
+    QAction* m_scanRemoteAction = nullptr;
     QAction* m_refreshAction = nullptr;
     QAction* m_backAction = nullptr;
     QAction* m_upAction = nullptr;
@@ -238,6 +254,11 @@ private:
     qint64 m_scanPermissionProcessedCount = 0;
     QElapsedTimer m_scanStatusUpdateTimer;
     QString m_currentPath;
+    QString m_scanHost;          // ssh host of the displayed/active scan; empty = local
+    RemoteProfile m_scanRemote;  // profile (options) of the displayed/active remote scan
+    RemoteProfile m_pendingScanRemote;
+    QList<RemoteProfile> m_remoteProfiles; // saved remote hosts shown on the landing page
+    std::shared_ptr<QString> m_remoteScanError;
     QStringList m_recentPaths;
     QStringList m_favouritePaths;
     std::vector<TreemapWidget::ViewState> m_history;
